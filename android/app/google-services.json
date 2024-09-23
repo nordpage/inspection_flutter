@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "1044101924449",
+    "project_id": "priemka-lite",
+    "storage_bucket": "priemka-lite.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1044101924449:android:fb09d5d081b0b2556a4c20",
+        "android_client_info": {
+          "package_name": "ru.osmotr.lite"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1044101924449-f9omv0nm5o3djsj160sigoorgafohkum.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3cQ6vt6fjIhOyKsvjmr0yfySuoKkqkoA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1044101924449-f9omv0nm5o3djsj160sigoorgafohkum.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1044101924449:android:492d81fef47460066a4c20",
+        "android_client_info": {
+          "package_name": "ru.samoosmotr.lite"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1044101924449-f9omv0nm5o3djsj160sigoorgafohkum.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3cQ6vt6fjIhOyKsvjmr0yfySuoKkqkoA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1044101924449-f9omv0nm5o3djsj160sigoorgafohkum.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
