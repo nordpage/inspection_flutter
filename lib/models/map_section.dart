@@ -1,38 +1,54 @@
-import 'package:inspection/models/map_content.dart';
-import 'package:json_annotation/json_annotation.dart';
-import 'help_result.dart';
+// models/map_section.dart
 
-part 'map_section.g.dart';
+import 'map_content.dart';
+import 'help_item.dart';
 
-@JsonSerializable()
 class MapSection {
-  final int id;
-  final int n;
-  final String name;
-  final String description;
-  final String? url;
-  @JsonKey(name: 'min_photo')
-  final int? minPhoto;
-  @JsonKey(name: 'help_list')
-  final List<HelpResult>? helpList;
-  @JsonKey(name: 'content_list')
-  final List<MapContent>? contentList;
-  late final String? userName;
+  int? id;
+  int? n;
+  String? name;
+  String? description;
+  String? url;
+  int? minPhoto;
+  List<HelpItem>? helpList;
+  List<MapContent>? contentList;
 
   MapSection({
-    required this.id,
-    required this.n,
-    required this.name,
-    required this.description,
+    this.id,
+    this.n,
+    this.name,
+    this.description,
     this.url,
     this.minPhoto,
     this.helpList,
     this.contentList,
-    this.userName,
   });
 
-  factory MapSection.fromJson(Map<String, dynamic> json) =>
-      _$MapSectionFromJson(json);
+  factory MapSection.fromJson(Map<String, dynamic> json) {
+    return MapSection(
+      id: json['id'],
+      n: json['n'],
+      name: json['name'],
+      description: json['description'],
+      url: json['url'],
+      minPhoto: json['min_photo'],
+      helpList: json['help_list'] != null
+          ? List<HelpItem>.from(json['help_list'].map((x) => HelpItem.fromJson(x)))
+          : [],
+      contentList: [], // Инициализируем пустым списком, т.к. контент может быть добавлен позже
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$MapSectionToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'n': n,
+      'name': name,
+      'description': description,
+      'url': url,
+      'min_photo': minPhoto,
+      'help_list': helpList?.map((x) => x.toJson()).toList(),
+      // contentList не отправляем на сервер
+    };
+  }
 }

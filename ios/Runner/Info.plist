@@ -52,5 +52,7 @@
     </array>
     <key>FirebaseAppDelegateProxyEnabled</key>
     <false/>
+    <key>NSCameraUsageDescription</key>
+    <string>Использование камеры для захвата изображений.</string>
 </dict>
 </plist>

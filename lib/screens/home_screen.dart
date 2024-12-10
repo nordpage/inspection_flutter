@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:inspection/models/map_content.dart';
-import 'package:inspection/models/map_result.dart';
 import 'package:inspection/models/map_section.dart';
-import 'package:inspection/models/questionnaire_sections.dart';
+import 'package:inspection/provider/client_provider.dart';
 import 'package:inspection/provider/shared_preferences_provider.dart';
+import 'package:inspection/screens/client_screen.dart';
+import 'package:inspection/screens/content_section_page.dart';
+import 'package:inspection/screens/referrer_screen.dart';
 import 'package:inspection/utils/status_content.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-import '../server/api_service.dart';
+import '../provider/auth_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,102 +20,55 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  late ClientProvider clientProvider;
+  late SharedPreferencesProvider prefsProvider;
+  bool isLocationPermissionGranted = false;
+  bool isPermissionChecked = false;
+  String orderNumber = '';
+  String role = '';
+
   @override
-  Widget build(BuildContext context) {
-    final prefsProvider = Provider.of<SharedPreferencesProvider>(context);
-    ApiService apiService = ApiService(prefsProvider);
-
-    return FutureBuilder(
-        future: apiService.getMap(),
-        builder: (BuildContext context, AsyncSnapshot<MapResult> snapshot) {
-          if (snapshot.hasData) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Text("Адрес: ", style: TextStyle(fontWeight: FontWeight.w500),),
-                      Text(snapshot.data!.address ?? "-"),
-                    ],
-                  ),
-                  SizedBox(height: 12,),
-                  Row(
-                    children: [
-                      Text("Заказ: ", style: TextStyle(fontWeight: FontWeight.w500)),
-                      Text(prefsProvider.username ?? "-"),
-                    ],
-                  ),
-                  SizedBox(height: 12,),
-                  Row(
-                    children: [
-                      Text("ФИО: ", style: TextStyle(fontWeight: FontWeight.w500)),
-                      Text(snapshot.data!.clientFio ?? "-"),
-                    ],
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: snapshot.data!.sections!.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        return Card(
-                          child: ListTile(
-                            title: Text(snapshot.data!.sections![index].name),
-                            trailing: getIcon(snapshot.data!.sections![index]),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          } else if (snapshot.hasError) {
-            debugPrint(snapshot.error!.toString());
-            return Center(child: Row(
-              children: [
-                Icon(Icons.error_outline),
-                Text(snapshot.error!.toString())
-              ],
-            ));
-          } else {
-            return Center(child: CircularProgressIndicator());
-          }
-        });
+  void initState() {
+    super.initState();
+    prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
+    clientProvider = Provider.of<ClientProvider>(context, listen: false);
+    clientProvider.getMap();
+    orderNumber = prefsProvider.username!;
+    role = prefsProvider.role!;
+    checkLocationPermission();
   }
-}
 
-SvgPicture getIcon(MapSection mapSection) {
-  String? imageAsset;
-  Color iconColor = Color(0xffaaaaaa);
-
-  if ((mapSection.contentList == null || mapSection.contentList!.isEmpty) && mapSection.minPhoto! > 0) {
-    imageAsset = "assets/circle.svg";
+  @override
+  void didPopNext() {
+    print("RETURN");
+    orderNumber = prefsProvider.username!;
+    role = prefsProvider.role!;
   }
-  else if (mapSection.contentList != null && mapSection.contentList!.isNotEmpty &&
-      mapSection.contentList!.length < mapSection.minPhoto!) {
-    imageAsset = "assets/circle.svg";
-  }
-  else if (mapSection.contentList != null && mapSection.contentList!.length >= mapSection.minPhoto!) {
-    bool hasPendingItems = mapSection.contentList!.any((item) =>
-    item.status == StatusContent.ADDED || item.status == StatusContent.DEFAULT);
 
-    if (hasPendingItems) {
-      imageAsset = "assets/watch_later.svg";
-    } else {
-      imageAsset = "assets/ok_outline.svg";
+  Future<void> checkLocationPermission() async {
+    PermissionStatus status = await Permission.location.status;
+    if (status.isGranted) {
+      setState(() {
+        isLocationPermissionGranted = true;
+        isPermissionChecked = true; // Обновляем флаг после проверки
+      });
+    } else if (status.isDenied || status.isPermanentlyDenied) {
+      PermissionStatus newStatus = await Permission.location.request();
+      setState(() {
+        isLocationPermissionGranted = newStatus.isGranted;
+        isPermissionChecked = true; // Обновляем флаг после запроса
+      });
     }
   }
 
-  // Если ни одно из условий не выполнено, не отображаем иконку
-  if (imageAsset == null) {
-    return SvgPicture.asset("assets/circle.svg", height: 24, width: 24, color: Colors.transparent); // Пустая иконка
+  @override
+  Widget build(BuildContext context) {
+    if(role == "client") {
+      return ClientScreen(isPermissionChecked: isPermissionChecked, isLocationPermissionGranted: isLocationPermissionGranted, checkLocationPermission: checkLocationPermission);
+    } else {
+      return ReferrerScreen();
+    };
   }
 
-  return SvgPicture.asset(
-    imageAsset,
-    height: 24,
-    width: 24,
-    color: iconColor,
-  );
-}
 
+}

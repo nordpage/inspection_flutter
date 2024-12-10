@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:inspection/screens/auth_screen.dart';
-import 'package:inspection/screens/home_screen.dart';
-import 'package:inspection/screens/register_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../provider/auth_provider.dart';
+import '../provider/shared_preferences_provider.dart';
+import 'auth_screen.dart';
+import 'home_screen.dart';
+import 'new_order_screen.dart';
+import 'object_parameters_screen.dart';
+import 'register_screen.dart';
+import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -17,82 +21,55 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedDrawerIndex = 0;
 
-  List<DrawerItem> _getDrawerItems(bool isAuth) {
-    if (isAuth) {
-      return [
-        DrawerItem("Главная", Icons.home),
-        DrawerItem("О приложении", Icons.info),
-        DrawerItem("Политика конфиденциальности", Icons.policy),
-        DrawerItem("Разработчик", Icons.person),
-        DrawerItem("Выход", Icons.exit_to_app),
-      ];
-    } else {
-      return [
-        DrawerItem("Авторизация", Icons.login),
-        DrawerItem("Регистрация", Icons.app_registration),
-        DrawerItem("О приложении", Icons.info),
-        DrawerItem("Политика конфиденциальности", Icons.policy),
-        DrawerItem("Разработчик", Icons.person),
-      ];
-    }
-  }
+  // Список заголовков для AppBar
+  final List<String> _titles = [
+    "Главная",
+    "Новый заказ",
+    "Настройки",
+    "О приложении",
+    "Политика конфиденциальности",
+    "Разработчик",
+  ];
 
-  _getDrawerItemWidget(int pos, bool isAuth) {
-    switch (pos) {
-      case 0:
-        return isAuth ? HomeScreen() : AuthScreen();
-      case 1:
-        return isAuth ? null : RegisterScreen();
-      default:
-        return Text("Error");
-    }
-  }
-
-  _onSelectItem(int index, bool isAuth) async {
-    if (isAuth && index == 0) {
-      setState(() => _selectedDrawerIndex = index);
-    } else if (!isAuth && index < 2) {
-      setState(() => _selectedDrawerIndex = index);
-    } else if (isAuth && index == 4) {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.logout(context);
-    } else {
-      _handleExternalLink(index, isAuth);
-    }
+  _onSelectItem(int index, bool isAuth, String role) async {
     Navigator.of(context).pop(); // Закрыть Drawer
+
+    setState(() {
+      _selectedDrawerIndex = index;
+    });
+
+    if (!isAuth) {
+      if (index >= 2) {
+        _handleExternalLink(index, isAuth);
+      }
+    } else {
+      if (role == "client" && index == 4) {
+        // Обработка выхода для клиента
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        _selectedDrawerIndex = 0;
+        await authProvider.logout();
+      } else if (role == "CARETAKER" && index == 3) {
+        // Обработка выхода для CARETAKER
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        _selectedDrawerIndex = 0;
+        await authProvider.logout();
+      }
+    }
   }
 
   Future<void> _handleExternalLink(int index, bool isAuth) async {
-    String url;
-    if (isAuth) {
-      switch (index) {
-        case 1:
-          url = "https://my.centr-i.ru/app_priemka_about";
-          break;
-        case 2:
-          url = "https://my.centr-i.ru/app_priemka_popd";
-          break;
-        case 3:
-          url = "https://my.centr-i.ru/app_priemka_dev";
-          break;
-        default:
-          return;
-      }
-    } else {
-      switch (index) {
-        case 2:
-          url = "https://my.centr-i.ru/app_priemka_about";
-          break;
-        case 3:
-          url = "https://my.centr-i.ru/app_priemka_popd";
-          break;
-        case 4:
-          url = "https://my.centr-i.ru/app_priemka_dev";
-          break;
-        default:
-          return;
-      }
-    }
+    String url = isAuth
+        ? {
+      1: "https://my.centr-i.ru/app_priemka_about",
+      2: "https://my.centr-i.ru/app_priemka_popd",
+      3: "https://my.centr-i.ru/app_priemka_dev",
+    }[index]!
+        : {
+      2: "https://my.centr-i.ru/app_priemka_about",
+      3: "https://my.centr-i.ru/app_priemka_popd",
+      4: "https://my.centr-i.ru/app_priemka_dev",
+    }[index]!;
+
     if (await canLaunch(url)) {
       await launch(url);
     } else {
@@ -100,67 +77,317 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  Widget _getDrawerItemWidget(int pos, bool isAuth, String role) {
+    if (!isAuth) {
+      // Гостевой режим
+      if (pos == 0) {
+        return const AuthScreen();
+      } else if (pos == 1) {
+        return const RegisterScreen();
+      }
+    } else {
+      // Авторизованный режим
+      if (role == "client") {
+        switch (pos) {
+          case 0: // Главная
+            return const HomeScreen();
+          default:
+            return Container(); // Пустой экран по умолчанию
+        }
+      } else if (role == "CARETAKER") {
+        switch (pos) {
+          case 0: // Главная
+            return const HomeScreen();
+          case 1: // Новый заказ
+            return const NewOrderScreen();
+          case 2: // Настройки
+            return const SettingsScreen();
+          default:
+            return Container(); // Пустой экран по умолчанию
+        }
+      }
+    }
+
+    return Container(); // Пустой экран по умолчанию
+  }
+
+  /// Возвращает список действий (actions) для AppBar на основе выбранного индекса
+  List<Widget> _getAppBarActions(int index, String role, bool hideAnketa) {
+    if (role == "client" && !hideAnketa) {
+      switch (index) {
+        case 0: // Главная
+          return [
+            IconButton(
+              icon: const Icon(Icons.home),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ObjectParametersScreen(), // Экран с параметрами объекта
+                  ),
+                );
+              },
+            ),
+          ];
+        default:
+          return [];
+      }
+    }
+    return [];
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final prefProvider = Provider.of<SharedPreferencesProvider>(context);
     bool isAuth = authProvider.isAuth;
+    String role = prefProvider.role ?? "guest";
+    bool hideAnketa = prefProvider.hideAnketa ?? false;
 
-    var drawerItems = _getDrawerItems(isAuth);
-    List<Widget> drawerOptions = [];
-
-    for (var i = 0; i < drawerItems.length; i++) {
-      var d = drawerItems[i];
-      drawerOptions.add(ListTile(
-        leading: Icon(
-          d.icon,
-          color: i == _selectedDrawerIndex ? Color(0xFF0f7692) : Colors.black,
-        ),
-        title: Text(
-          d.title,
-          style: TextStyle(
-              color: i == _selectedDrawerIndex
-                  ? Color(0xFF0f7692)
-                  : Colors.black),
-        ),
-        selected: i == _selectedDrawerIndex,
-        onTap: () => _onSelectItem(i, isAuth),
-      ));
-    }
+    var drawerWidget = isAuth
+        ? (role == "CARETAKER")
+        ? ProfessionalDrawer(
+      selectedIndex: _selectedDrawerIndex,
+      onSelectItem: (index) => _onSelectItem(index, isAuth, role),
+    )
+        : ClientDrawer(
+      selectedIndex: _selectedDrawerIndex,
+      onSelectItem: (index) => _onSelectItem(index, isAuth, role),
+    )
+        : GuestDrawer(
+      selectedIndex: _selectedDrawerIndex,
+      onSelectItem: (index) => _onSelectItem(index, isAuth, role),
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(drawerItems[_selectedDrawerIndex].title),
+        title: Text(_titles[_selectedDrawerIndex]), // Меняем заголовок AppBar
+        actions: _getAppBarActions(_selectedDrawerIndex, role, hideAnketa), // Добавляем actions
       ),
-      drawer: Drawer(
+      drawer: drawerWidget,
+      body: _getDrawerItemWidget(_selectedDrawerIndex, isAuth, role),
+    );
+  }
+}
+
+class ClientDrawer extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelectItem;
+
+  const ClientDrawer({required this.selectedIndex, required this.onSelectItem});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      DrawerItem("Главная", Icons.home),
+      DrawerItem("О приложении", Icons.info),
+      DrawerItem("Политика конфиденциальности", Icons.policy),
+      DrawerItem("Разработчик", Icons.person),
+      DrawerItem("Выход", Icons.exit_to_app),
+    ];
+
+    return Drawer(
+      child: Container(
+        color: Colors.white,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(child: _buildDrawerItems(items)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return SizedBox(
+      height: 80,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 20),
         child: Container(
-          color: Colors.white,
-          child: Column(
-            children: <Widget>[
-              SizedBox(
-                height: 80,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: Container(
-                    child: Image.asset(
-                      "assets/priemka_logo.jpg",
-                      height: 60,
-                      width: 146,
-                    ),
-                  ),
-                ),
-              ),
-              Column(children: drawerOptions)
-            ],
+          child: Image.asset(
+            "assets/priemka_logo.jpg",
+            height: 60,
+            width: 146,
           ),
         ),
       ),
-      body: _getDrawerItemWidget(_selectedDrawerIndex, isAuth),
+    );
+  }
+
+  Widget _buildDrawerItems(List<DrawerItem> items) {
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final isSelected = index == selectedIndex;
+
+        return ListTile(
+          leading: Icon(
+            item.icon,
+            color: isSelected ? const Color(0xFF0f7692) : Colors.black,
+          ),
+          title: Text(
+            item.title,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF0f7692) : Colors.black,
+            ),
+          ),
+          selected: isSelected,
+          onTap: () => onSelectItem(index),
+        );
+      },
+    );
+  }
+}
+
+class ProfessionalDrawer extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelectItem;
+
+  const ProfessionalDrawer({
+    required this.selectedIndex,
+    required this.onSelectItem,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      DrawerItem("Главная", Icons.home),
+      DrawerItem("Новый заказ", Icons.note_add),
+      DrawerItem("Настройки", Icons.settings),
+      DrawerItem("Выход", Icons.exit_to_app),
+    ];
+
+    return Drawer(
+      child: Container(
+        color: Colors.white,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(child: _buildDrawerItems(items)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return SizedBox(
+      height: 80,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 20),
+        child: Container(
+          child: Image.asset(
+            "assets/priemka_logo.jpg",
+            height: 60,
+            width: 146,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItems(List<DrawerItem> items) {
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final isSelected = index == selectedIndex;
+
+        return ListTile(
+          leading: Icon(
+            item.icon,
+            color: isSelected ? const Color(0xFF0f7692) : Colors.black,
+          ),
+          title: Text(
+            item.title,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF0f7692) : Colors.black,
+            ),
+          ),
+          selected: isSelected,
+          onTap: () => onSelectItem(index),
+        );
+      },
+    );
+  }
+}
+
+class GuestDrawer extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelectItem;
+
+  const GuestDrawer({required this.selectedIndex, required this.onSelectItem});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      DrawerItem("Авторизация", Icons.login),
+      DrawerItem("Регистрация", Icons.app_registration),
+      DrawerItem("О приложении", Icons.info),
+      DrawerItem("Политика конфиденциальности", Icons.policy),
+      DrawerItem("Разработчик", Icons.person),
+    ];
+
+    return Drawer(
+      child: Container(
+        color: Colors.white,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(child: _buildDrawerItems(items)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return SizedBox(
+      height: 80,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 20),
+        child: Container(
+          child: Image.asset(
+            "assets/priemka_logo.jpg",
+            height: 60,
+            width: 146,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItems(List<DrawerItem> items) {
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final isSelected = index == selectedIndex;
+
+        return ListTile(
+          leading: Icon(
+            item.icon,
+            color: isSelected ? const Color(0xFF0f7692) : Colors.black,
+          ),
+          title: Text(
+            item.title,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF0f7692) : Colors.black,
+            ),
+          ),
+          selected: isSelected,
+          onTap: () => onSelectItem(index),
+        );
+      },
     );
   }
 }
 
 class DrawerItem {
-  String title;
-  IconData icon;
+  final String title;
+  final IconData icon;
+
   DrawerItem(this.title, this.icon);
 }

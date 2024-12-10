@@ -1,27 +1,41 @@
-import 'package:json_annotation/json_annotation.dart';
+// models/map_content.dart
 
-part 'map_content.g.dart';
-
-@JsonSerializable()
 class MapContent {
-  final String? uri; // Может быть null
-  final int? status; // Может быть null
-  final int? type; // Может быть null
-  final String? fileName; // Может быть null
-  final double? lat; // Может быть null
-  final double? lon; // Может быть null
+  int? id;
+  String? fileName;
+  int? status;
+  int? documentId;
+  String? textInspection;
+  int? statusInspection;
 
   MapContent({
-    this.uri, // Обрабатываем как nullable
-    this.status, // Обрабатываем как nullable
-    this.type, // Обрабатываем как nullable
-    this.fileName, // Обрабатываем как nullable
-    this.lat, // Обрабатываем как nullable
-    this.lon, // Обрабатываем как nullable
+    this.id,
+    this.fileName,
+    this.status,
+    this.documentId,
+    this.textInspection,
+    this.statusInspection,
   });
 
-  factory MapContent.fromJson(Map<String, dynamic> json) =>
-      _$MapContentFromJson(json);
+  factory MapContent.fromJson(Map<String, dynamic> json) {
+    return MapContent(
+      id: json['id'],
+      fileName: json['file_name'],
+      status: json['status'],
+      documentId: json['document_id'],
+      textInspection: json['text_inspection'],
+      statusInspection: json['status_inspection'],
+    );
+  }
 
-  Map<String, dynamic> toJson() => _$MapContentToJson(this);
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'file_name': fileName,
+      'status': status,
+      'document_id': documentId,
+      'text_inspection': textInspection,
+      'status_inspection': statusInspection,
+    };
+  }
 }

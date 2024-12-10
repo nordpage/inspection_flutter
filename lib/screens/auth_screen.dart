@@ -6,17 +6,31 @@ import 'package:inspection/provider/shared_preferences_provider.dart';
 import 'package:inspection/widgets/progress_dialog.dart';
 import 'package:provider/provider.dart';
 
-import '../provider/navigation_provider.dart';
 import '../server/api_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
+  static const routeName = '/auth';
+
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+
+  TextEditingController loginController = TextEditingController();
+  bool _loginValidate = false;
+  TextEditingController passwordController = TextEditingController();
+  bool _passwordValidate = false;
+
+  @override
+  void dispose() {
+    loginController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final prefsProvider = Provider.of<SharedPreferencesProvider>(context);
@@ -27,7 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
       apiService.login(username, password, (status, code, response) {
         if (status == 'OK') {
           ProgressDialog.show(context, "Пожалуйста подождите ...", 3, () {
-            authProvider.login(username, password, response!.role, response.hideAnketa, context);
+            authProvider.login(username, password, response!.role, response.hideAnketa);
           });
         } else if (status == 'INTERNET') {
           print('Internet connection problem.');
@@ -40,9 +54,6 @@ class _AuthScreenState extends State<AuthScreen> {
         }
       });
     }
-
-    TextEditingController loginController = TextEditingController();
-    TextEditingController passwordController = TextEditingController();
 
     return Scaffold(
       body: SafeArea(
@@ -71,8 +82,11 @@ class _AuthScreenState extends State<AuthScreen> {
                           width: 300,
                           child: TextField(
                             controller: loginController,
-                            keyboardType: TextInputType.text,
-                            decoration: InputDecoration(labelText: "Логин"),
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                                labelText: "Логин",
+                                errorText: _loginValidate ? "Поле \'Логин\' не может быть пустым" : null,
+                            ),
                           ),
                         ),
                         SizedBox(height: 10),
@@ -82,7 +96,10 @@ class _AuthScreenState extends State<AuthScreen> {
                             controller: passwordController,
                             obscureText: true,
                             keyboardType: TextInputType.visiblePassword,
-                            decoration: InputDecoration(labelText: "Пароль"),
+                            decoration: InputDecoration(
+                                labelText: "Пароль",
+                                errorText: _passwordValidate ? "Поле \'Пароль\' не может быть пустым" : null,
+                            ),
                           ),
                         ),
                         SizedBox(height: 34),
@@ -91,7 +108,13 @@ class _AuthScreenState extends State<AuthScreen> {
                           width: 180,
                           child: ElevatedButton(
                             onPressed: () {
-                              _login(loginController.text, passwordController.text);
+                              setState(() {
+                                _loginValidate = loginController.text.isEmpty;
+                                _passwordValidate = passwordController.text.isEmpty;
+                              });
+                              if (!_loginValidate && !_passwordValidate) {
+                                _login(loginController.text, passwordController.text);
+                              }
                             },
                             child: Text("войти в систему"),
                           ),

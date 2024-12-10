@@ -1,22 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'shared_preferences_provider.dart';
 
 class AuthProvider with ChangeNotifier {
   bool _isAuth = false;
+  SharedPreferencesProvider? sharedPreferencesProvider;
 
   bool get isAuth => _isAuth;
 
   AuthProvider();
 
-  Future<void> initializeAuthStatus(BuildContext context) async {
-    await _checkAuthStatus(context);
+  void updateSharedPreferencesProvider(SharedPreferencesProvider newProvider) {
+    sharedPreferencesProvider = newProvider;
+    initializeAuthStatus();
   }
 
-  Future<void> _checkAuthStatus(BuildContext context) async {
-    final sharedPreferencesProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
-    final username = sharedPreferencesProvider.username;
-    final password = sharedPreferencesProvider.password;
+  void initializeAuthStatus() {
+    if (sharedPreferencesProvider != null) {
+      _checkAuthStatus();
+    }
+  }
+
+  void _checkAuthStatus() {
+    final username = sharedPreferencesProvider?.username;
+    final password = sharedPreferencesProvider?.password;
 
     print('Checking auth status...');
     print('Username: $username');
@@ -32,29 +38,28 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> login(String username, String password, String role, bool hideAnketa, BuildContext context) async {
+  Future<void> login(String username, String password, String role, bool hideAnketa) async {
     _isAuth = true;
 
-    final sharedPreferencesProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
-    await sharedPreferencesProvider.saveUsername(username);
-    await sharedPreferencesProvider.savePassword(password);
-    await sharedPreferencesProvider.saveRole(role);
-    await sharedPreferencesProvider.saveHideAnketa(hideAnketa);
+    await sharedPreferencesProvider!.saveUsername(username);
+    await sharedPreferencesProvider!.savePassword(password);
+    await sharedPreferencesProvider!.saveRole(role);
+    await sharedPreferencesProvider!.saveHideAnketa(hideAnketa);
 
     print('User logged in: $username');
     notifyListeners();
   }
 
-  Future<void> logout(BuildContext context) async {
+  Future<void> logout() async {
     _isAuth = false;
 
-    final sharedPreferencesProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
-    await sharedPreferencesProvider.clearUsername();
-    await sharedPreferencesProvider.clearPassword();
-    await sharedPreferencesProvider.clearRole();
-    await sharedPreferencesProvider.clearHideAnketa();
+    await sharedPreferencesProvider!.clearUsername();
+    await sharedPreferencesProvider!.clearPassword();
+    await sharedPreferencesProvider!.clearRole();
+    await sharedPreferencesProvider!.clearHideAnketa();
 
     print('User logged out');
     notifyListeners();
   }
+
 }

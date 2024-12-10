@@ -11,7 +11,9 @@ final ThemeData customTheme = ThemeData(
     background: Colors.white, // Основной цвет фона
     error: Color(0xFFff0000), // Цвет ошибок
     onError: Colors.white, // Цвет текста на фоне ошибок
+    outline: Color(0xFF0f7692), // Цвет рамок
   ),
+  dividerColor: Colors.transparent,
   useMaterial3: true, // Включение использования Material 3
   appBarTheme: AppBarTheme(
     backgroundColor: Color(0xFF0f7692), // Цвет AppBar

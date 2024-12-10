@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:inspection/models/login_response.dart';
+import 'package:inspection/models/map_anketa.dart';
 import 'package:inspection/provider/shared_preferences_provider.dart';
 
 import '../models/questionnaire_sections.dart';
@@ -13,7 +13,7 @@ import '../models/map_section.dart';
 import '../services/firebase_service.dart';
 
 class ApiService {
-  final String baseUrl = 'https://dev-my.centr-i.ru/api/';
+  final String baseUrl = 'https://dev-my.centr-i.ru/';
   final Dio dio = Dio();
   final FirebaseService firebaseService = FirebaseService();
   final SharedPreferencesProvider sharedPreferencesProvider;
@@ -50,7 +50,7 @@ class ApiService {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
       final response = await dio.get(
-        'map_photo/anketa',
+        'api/map_photo/anketa',
         options: Options(
           headers: {'Authorization': token},
         ),
@@ -69,7 +69,7 @@ class ApiService {
     }
   }
 
-  Future<String> register(Map<String, Object> body) async {
+  Future<String> register(String body) async {
     try {
       final response = await dio.post(
         'public/app_order_new',
@@ -89,10 +89,11 @@ class ApiService {
     }
   }
 
-  Future<MapResult> getMapWithBody(Map<String, Object> body, String token) async {
+  Future<MapResult> getMapWithBody(String body) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
       final response = await dio.post(
-        'map_photo/map',
+        'api/map_photo/map',
         data: body,
         options: Options(
           headers: {'Authorization': token},
@@ -109,12 +110,32 @@ class ApiService {
     }
   }
 
+  Future<MapAnketa> getMapAnketa() async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+    try {
+      final response = await dio.post(
+        'api/map_photo/map/anketa',
+        options: Options(
+          headers: {'Authorization': token},
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        return MapAnketa.fromJson(response.data);
+      } else {
+        throw Exception('Не удалось получить карту с телом запроса');
+      }
+    } catch (e) {
+      throw Exception('Ошибка при получении карты с телом запроса: $e');
+    }
+  }
+
   /// Получение карты без тела запроса
   Future<MapResult> getMap() async {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
       final response = await dio.post(
-        'map_photo/map',
+        'api/map_photo/map',
         options: Options(
           headers: {'Authorization': token},
         ),
@@ -134,7 +155,7 @@ class ApiService {
   Future<dynamic> sendVideoUrl(String url, String token) async {
     try {
       final response = await dio.post(
-        'map_photo/video_url',
+        'api/map_photo/video_url',
         queryParameters: {
           'url': url,
         },
@@ -157,7 +178,7 @@ class ApiService {
   Future<dynamic> removeContent(int id, String token) async {
     try {
       final response = await dio.post(
-        'departures/removePhoto',
+        'api/departures/removePhoto',
         queryParameters: {
           'id': id,
         },
@@ -186,14 +207,11 @@ class ApiService {
       String? fcmToken = firebaseService.fcmToken;
 
       if (fcmToken == null) {
-        throw Exception("FCM Token is not available");
+        throw Exception("FCM Token недоступен");
       }
 
-      // Log the FCM Token
-      print('Using FCM Token: $fcmToken');
-
       final response = await dio.post(
-        'departures/login',
+        'api/departures/login',
         options: Options(
           headers: {
             'Authorization': _getBasic(p1, p2),
@@ -204,28 +222,24 @@ class ApiService {
         },
       );
 
-      print('Response status code: ${response.statusCode}');
-      print('Response data: ${response.data}');
-
       if (response.statusCode == 200) {
         if (response.data['status'] == 'OK') {
           final loginResponse = LoginResponse.fromJson(response.data);
           onResponseListener('OK', response.statusCode!, loginResponse);
         } else {
-          print('Login failed with server message: ${response.data}');
           onResponseListener('FAILURE', -1, null);
         }
       } else {
-        print('Unexpected status code: ${response.statusCode}');
         onResponseListener('FAILURE', -1, null);
       }
     } on DioException catch (e) {
-      print('DioException occurred: ${e.message}');
-      print('DioException type: ${e.type}');
-      print('DioException response data: ${e.response?.data}');
-      onResponseListener('FAILURE', -1, null);
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        onResponseListener('INTERNET', -1, null);
+      } else {
+        onResponseListener('FAILURE', -1, null);
+      }
     } catch (e) {
-      print('An exception occurred: $e');
       onResponseListener('FAILURE', -1, null);
     }
   }
@@ -235,7 +249,7 @@ class ApiService {
   Future<String> getTimeList(String token) async {
     try {
       final response = await dio.post(
-        'departures/time_list',
+        'api/departures/time_list',
         options: Options(
           headers: {'Authorization': token},
         ),
@@ -255,7 +269,7 @@ class ApiService {
   Future<List<MapSection>> getOsmotrList(String token, String d1, String d2) async {
     try {
       final response = await dio.post(
-        'departures/osmotr_list',
+        'api/departures/osmotr_list',
         options: Options(
           headers: {'Authorization': token},
         ),
@@ -280,7 +294,7 @@ class ApiService {
   Future<MapSection> getOsmotr(String token, int id) async {
     try {
       final response = await dio.post(
-        'departures/get_osmotr',
+        'api/departures/get_osmotr',
         options: Options(
           headers: {'Authorization': token},
         ),
@@ -303,7 +317,7 @@ class ApiService {
   Future<String> cancelOrder(String token, int id) async {
     try {
       final response = await dio.post(
-        'departures/osmotr_cancel',
+        'api/departures/osmotr_cancel',
         options: Options(
           headers: {'Authorization': token},
         ),
@@ -326,7 +340,7 @@ class ApiService {
   Future<dynamic> referNew(String token, Map<String, dynamic> data) async {
     try {
       final response = await dio.post(
-        'departures/referal_new',
+        'api/departures/referal_new',
         options: Options(
           headers: {
             'Authorization': token,
@@ -346,8 +360,9 @@ class ApiService {
     }
   }
 
-  /// Отправка фотографии
-  Future<Response> sendPhoto(String token, String filePath, String type, String order) async {
+  Future<Response> sendPhoto(String filePath, String type, String order) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+
     try {
       FormData formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(filePath),
@@ -356,7 +371,7 @@ class ApiService {
       });
 
       final response = await dio.post(
-        'departures/uploadPhoto',
+        'api/departures/uploadPhoto',
         options: Options(
           headers: {'Authorization': token},
         ),
