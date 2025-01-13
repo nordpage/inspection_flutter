@@ -1,14 +1,24 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:inspection/screens/preview_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/map_content.dart';
+import '../services/database_service.dart';
+import '../utils/utils.dart';
+import 'preview_screen.dart';
 
 class CameraCaptureScreen extends StatefulWidget {
+  final int sectionId;
   final CameraDescription camera;
   final String title;
 
-  CameraCaptureScreen({required this.camera, required this.title});
+  CameraCaptureScreen({
+    required this.camera,
+    required this.title,
+    required this.sectionId,
+  });
 
   @override
   _CameraCaptureScreenState createState() => _CameraCaptureScreenState();
@@ -17,42 +27,41 @@ class CameraCaptureScreen extends StatefulWidget {
 class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   CameraController? _controller;
   Future<void>? _initializeControllerFuture;
-  List<XFile> _capturedPhotos = [];
+  List<File> _savedPhotos = []; // Сохраненные фото
   bool _isPermissionGranted = false;
   bool _photoCaptured = false;
   XFile? _latestPhoto;
+  final DatabaseService _dbService = DatabaseService();
 
   @override
   void initState() {
     super.initState();
-    _requestCameraPermission();
+    _requestPermissions();
   }
 
-  Future<void> _requestCameraPermission() async {
-    PermissionStatus status = await Permission.camera.status;
-
-    if (status.isDenied || status.isPermanentlyDenied) {
-      status = await Permission.camera.request();
-    }
-
-    if (status.isGranted) {
+  Future<void> _requestPermissions() async {
+    if (await Permission.camera.request().isGranted &&
+        await Permission.storage.request().isGranted) {
       setState(() {
         _isPermissionGranted = true;
         _initializeCamera();
       });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Камера недоступна, предоставьте разрешение.')),
-      );
-      Navigator.pop(context);
+      _showPermissionError();
     }
   }
 
-  void _initializeCamera() {
-    _controller = CameraController(
-      widget.camera,
-      ResolutionPreset.high,
+  void _showPermissionError() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Камера и хранилище недоступны, предоставьте разрешения.'),
+      ),
     );
+    Navigator.pop(context);
+  }
+
+  void _initializeCamera() {
+    _controller = CameraController(widget.camera, ResolutionPreset.high);
     _initializeControllerFuture = _controller!.initialize();
   }
 
@@ -67,23 +76,48 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       await _initializeControllerFuture;
 
       final image = await _controller!.takePicture();
-
       setState(() {
         _latestPhoto = image;
-        _capturedPhotos.add(image);
         _photoCaptured = true;
       });
     } catch (e) {
-      print(e);
+      print('Ошибка при захвате фото: $e');
+    }
+  }
+
+  Future<void> _saveAndInsertPhotos() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String username = prefs.getString('username') ?? 'default_user';
+    final Directory publicDir =
+    Directory('/storage/emulated/0/Priemka/$username/photo');
+
+    if (!await publicDir.exists()) {
+      await publicDir.create(recursive: true);
+    }
+
+    for (var xfile in _savedPhotos.map((file) => File(file.path))) {
+      // Сохранение фото в общедоступную папку
+      final String fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String newFilePath = '${publicDir.path}/$fileName';
+      final File savedFile = await xfile.copy(newFilePath);
+
+      // Вставка данных о фото в базу данных
+      final content = MapContent(
+        id: DateTime.now().millisecondsSinceEpoch,
+        fileName: savedFile.path,
+        status: 0, // NOT_SENT
+        documentId: null,
+        textInspection: null,
+        statusInspection: null,
+      );
+      await _dbService.insertContentToSection(widget.sectionId, [content]);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Camera Capture'),
-      ),
+      appBar: AppBar(title: Text('Камера')),
       body: _isPermissionGranted
           ? Column(
         children: [
@@ -97,58 +131,56 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                       : CameraPreview(_controller!),
                 );
               } else {
-                return Center(child: CircularProgressIndicator());
+                return const Center(child: CircularProgressIndicator());
               }
             },
           ),
           _photoCaptured
-              ? Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildControlButton('Выйти', () {
-                  Navigator.pop(context);
-                }),
-                _buildControlButton('Повтор', () {
-                  _capturePhoto();
-                }),
-                _buildControlButton('ОК', () {
-                  Navigator.push(
+              ? Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildControlButton('Выйти', () {
+                Navigator.pop(context);
+              }),
+              _buildControlButton('Повтор', () {
+                _capturePhoto();
+              }),
+              _buildControlButton('ОК', () async {
+                if (_latestPhoto != null) {
+                  final file = File(_latestPhoto!.path);
+                  _savedPhotos.add(file); // Добавляем в список
+                  await _saveAndInsertPhotos();
+
+                  Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => PreviewScreen(capturedPhotos: _capturedPhotos, title: widget.title,),
+                      builder: (context) => PreviewScreen(
+                        capturedPhotos: _savedPhotos,
+                        title: widget.title,
+                        sectionId: widget.sectionId,
+                      ),
                     ),
                   );
-                }),
-                _buildControlButton('ОК+1', () {
-                  setState(() {
-                    _photoCaptured = false; // Сбрасываем состояние фото
-                    _initializeCamera(); // Снова инициализируем камеру
-                  });
-                }),
-              ],
-            ),
+                }
+              }),
+            ],
           )
               : ElevatedButton(
             onPressed: _capturePhoto,
-            child: Icon(Icons.camera_alt),
+            child: const Icon(Icons.camera_alt),
           ),
         ],
       )
-          : Center(child: Text('Запрос разрешений на камеру...')),
+          : const Center(
+        child: Text('Запрос разрешений на камеру и хранилище...'),
+      ),
     );
   }
 
   Widget _buildControlButton(String label, VoidCallback onPressed) {
-    return Column(
-      children: [
-        TextButton(
-          onPressed: onPressed,
-          child: Text(label, style: const TextStyle(fontSize: 16)),
-
-        ),
-      ],
+    return TextButton(
+      onPressed: onPressed,
+      child: Text(label, style: const TextStyle(fontSize: 16)),
     );
   }
 }

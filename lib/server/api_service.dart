@@ -3,10 +3,12 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:inspection/models/login_response.dart';
 import 'package:inspection/models/map_anketa.dart';
 import 'package:inspection/provider/shared_preferences_provider.dart';
 
+import '../models/osmotr_item.dart';
 import '../models/questionnaire_sections.dart';
 import '../models/map_result.dart';
 import '../models/map_section.dart';
@@ -266,22 +268,25 @@ class ApiService {
   }
 
   /// Получение списка осмотров
-  Future<List<MapSection>> getOsmotrList(String token, String d1, String d2) async {
+  Future<List<OsmotrItem>> getOsmotrList(String d1, String d2) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
       final response = await dio.post(
         'api/departures/osmotr_list',
         options: Options(
           headers: {'Authorization': token},
         ),
-        queryParameters: {
-          'd1': d1,
-          'd2': d2,
-        },
+        queryParameters: {'d1': d1, 'd2': d2},
       );
 
       if (response.statusCode == 200) {
-        List<dynamic> data = response.data;
-        return data.map((item) => MapSection.fromJson(item)).toList();
+        // Проверяем структуру ответа
+        if (response.data['status'] == 'OK' && response.data['data'] != null) {
+          List<dynamic> data = response.data['data']; // Берем массив из поля 'data'
+          return data.map((item) => OsmotrItem.fromJson(item)).toList();
+        } else {
+          throw Exception('Некорректный статус ответа или отсутствуют данные');
+        }
       } else {
         throw Exception('Не удалось получить список осмотров');
       }
@@ -337,7 +342,9 @@ class ApiService {
   }
 
   /// Создание нового реферала
-  Future<dynamic> referNew(String token, Map<String, dynamic> data) async {
+  Future<dynamic> referNew(Map<String, dynamic> data) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+
     try {
       final response = await dio.post(
         'api/departures/referal_new',

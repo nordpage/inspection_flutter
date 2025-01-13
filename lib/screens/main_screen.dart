@@ -99,7 +99,7 @@ class _MainScreenState extends State<MainScreen> {
           case 0: // Главная
             return const HomeScreen();
           case 1: // Новый заказ
-            return const NewOrderScreen();
+            return NewOrderScreen();
           case 2: // Настройки
             return const SettingsScreen();
           default:

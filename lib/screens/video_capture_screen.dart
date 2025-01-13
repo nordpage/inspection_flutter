@@ -4,16 +4,21 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:inspection/screens/video_preview_screen.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/utils.dart';
 
 class VideoCaptureScreen extends StatefulWidget {
+  final int sectionId;
   static const routeName = '/video-capture';
+
+  const VideoCaptureScreen({super.key, required this.sectionId});
   @override
   State<VideoCaptureScreen> createState() => _VideoCaptureScreenState();
 }
 
-class _VideoCaptureScreenState extends State<VideoCaptureScreen> with WidgetsBindingObserver {
+class _VideoCaptureScreenState extends State<VideoCaptureScreen>
+    with WidgetsBindingObserver {
   CameraController? _controller;
   bool _isLoading = true;
   bool _isRecording = false;
@@ -80,23 +85,19 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen> with WidgetsBin
         final XFile videoFile = await _controller!.stopVideoRecording();
         _stopTimer();
 
-        final randomHash = getRandomString(10);
-        final appDir = (await getExternalStorageDirectories(type: StorageDirectory.documents))?.first;
-        final fileName = 'video_${randomHash}.mp4';
-        final savedPath = '${appDir!.path}/$fileName';
-        debugPrint(savedPath);
+        // Сохранение видео в директорию
+        final savedFile = await _saveVideoToDocuments(videoFile);
 
         if (!mounted) return;
 
-        final file = await File(videoFile.path).copy(savedPath);
-
-        debugPrint("Seconds: ${_recordingDuration.inSeconds.toString()}");
-
-        if (_recordingDuration.inSeconds > 10) {
+        if (_recordingDuration.inMinutes > 7) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => VideoPreviewScreen(capturedVideo: file, duration: _recordingDuration,),
+              builder: (context) => VideoPreviewScreen(
+                capturedVideo: savedFile,
+                duration: _recordingDuration, sectionId: widget.sectionId,
+              ),
             ),
           );
         } else {
@@ -111,7 +112,6 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen> with WidgetsBin
         setState(() {
           _recordingDuration = Duration.zero;
         });
-
       } catch (e) {
         debugPrint('Error stopping video recording: $e');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -136,6 +136,51 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen> with WidgetsBin
       }
     }
     setState(() => _isRecording = !_isRecording);
+  }
+
+  Future<File> _saveVideoToDocuments(XFile videoFile) async {
+    try {
+      // Получение имени пользователя из SharedPreferences
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String username = prefs.getString('username') ?? 'default_user';
+
+      // Получение пути к публичной директории
+      final Directory? documentsDir = await getExternalStorageDirectory();
+      if (documentsDir != null) {
+        // Формирование пути с подпапками
+        final String priemkaPath =
+            '${documentsDir.path}/Priemka/$username/video';
+        final Directory targetDir = Directory(priemkaPath);
+
+        // Создание папок, если их нет
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
+        }
+
+        final randomHash = getRandomString(10);
+
+        final String newFilePath =
+            '$priemkaPath/video_$randomHash.mp4';
+
+        // Копирование видео в директорию
+        final File newFile = await File(videoFile.path).copy(newFilePath);
+
+        print('Видео сохранено: ${newFile.path}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Видео сохранено в $newFilePath')),
+        );
+
+        return newFile;
+      } else {
+        throw Exception('Документ директория недоступна');
+      }
+    } catch (e) {
+      print('Ошибка сохранения видео: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка сохранения видео: $e')),
+      );
+      throw Exception('Ошибка сохранения видео');
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -163,11 +208,9 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen> with WidgetsBin
         children: [
           if (_isLoading)
             const Center(
-                child: CircularProgressIndicator(color: Color(0xFF0f7692))
-            )
+                child: CircularProgressIndicator(color: Color(0xFF0f7692)))
           else
             CameraPreview(_controller!),
-
           if (!_isLoading)
             Align(
               alignment: Alignment.bottomCenter,
@@ -189,7 +232,9 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen> with WidgetsBin
                     ElevatedButton(
                       onPressed: _toggleRecording,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _isRecording ? Colors.red : const Color(0xFF0f7692),
+                        backgroundColor: _isRecording
+                            ? Colors.red
+                            : const Color(0xFF0f7692),
                         shape: const CircleBorder(),
                         padding: const EdgeInsets.all(16),
                       ),

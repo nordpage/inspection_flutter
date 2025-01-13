@@ -105,7 +105,7 @@ class _ContentSectionPageState extends State<ContentSectionPage> {
     final photo = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CameraCaptureScreen(camera: cameraDescription, title: currentSection.name!,),
+        builder: (context) => CameraCaptureScreen(camera: cameraDescription, title: currentSection.name!, sectionId: currentSection.id!,),
       ),
     );
 
@@ -375,7 +375,7 @@ class _ContentSectionPageState extends State<ContentSectionPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => VideoCaptureScreen(),
+                          builder: (context) => VideoCaptureScreen(sectionId: currentSection.id!,),
                         ),
                       );
                     },

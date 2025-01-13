@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
-
-import '../utils/utils.dart';
+import '../provider/shared_preferences_provider.dart';
+import '../server/api_service.dart';
+import '../models/osmotr_item.dart'; // Модель для событий
 
 class ReferrerScreen extends StatefulWidget {
   const ReferrerScreen({super.key});
@@ -11,21 +13,67 @@ class ReferrerScreen extends StatefulWidget {
 }
 
 class _ReferrerScreenState extends State<ReferrerScreen> {
-  late final ValueNotifier<List<Event>> _selectedEvents;
-  CalendarFormat _calendarFormat = CalendarFormat.month;
-  RangeSelectionMode _rangeSelectionMode = RangeSelectionMode
-      .toggledOff; // Can be toggled on/off by longpressing a date
+  late ValueNotifier<List<OsmotrItem>> _selectedEvents;
+  Map<DateTime, List<OsmotrItem>> _events = {};
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  DateTime? _rangeStart;
-  DateTime? _rangeEnd;
 
   @override
   void initState() {
     super.initState();
-
     _selectedDay = _focusedDay;
-    _selectedEvents = ValueNotifier(_getEventsForDay(_selectedDay!));
+    _selectedEvents = ValueNotifier([]);
+    loadOsmotrData();
+  }
+
+  Future<void> loadOsmotrData() async {
+    try {
+      DateTime lastDayOfMonth = DateTime(
+        DateTime.now().year,
+        DateTime.now().month + 1,
+        0,
+      );
+
+      String lastDayFormatted =
+          '${lastDayOfMonth.day.toString().padLeft(2, '0')}.${lastDayOfMonth.month.toString().padLeft(2, '0')}.${lastDayOfMonth.year}';
+
+      final prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
+      final ApiService apiService = ApiService(prefsProvider);
+
+      List<OsmotrItem> osmotrList = await apiService.getOsmotrList(
+        '01.12.2021',
+        lastDayFormatted,
+      );
+
+      setState(() {
+        _events = {};
+        for (var osmotr in osmotrList) {
+          debugPrint(osmotr.toString());
+
+          // Парсим дату и устанавливаем UTC с обнулением времени
+          List<String> dateParts = osmotr.osmotrField1.split('.');
+          DateTime date = DateTime.utc(
+            int.parse(dateParts[2]), // Год
+            int.parse(dateParts[1]), // Месяц
+            int.parse(dateParts[0]), // День
+          );
+
+          _events.putIfAbsent(date, () => []);
+          _events[date]!.add(osmotr);
+        }
+
+        // Обновляем события для выбранного дня
+        DateTime today = DateTime.utc(
+          _selectedDay!.year,
+          _selectedDay!.month,
+          _selectedDay!.day,
+        );
+        _selectedEvents.value = _events[today] ?? [];
+      });
+
+    } catch (e) {
+      print('Ошибка загрузки данных: $e');
+    }
   }
 
   @override
@@ -34,97 +82,100 @@ class _ReferrerScreenState extends State<ReferrerScreen> {
     super.dispose();
   }
 
-  List<Event> _getEventsForDay(DateTime day) {
-    // Implementation example
-    return kEvents[day] ?? [];
-  }
-
-  List<Event> _getEventsForRange(DateTime start, DateTime end) {
-    // Implementation example
-    final days = daysInRange(start, end);
-
-    return [
-      for (final d in days) ..._getEventsForDay(d),
-    ];
-  }
-
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
-    if (!isSameDay(_selectedDay, selectedDay)) {
-      setState(() {
-        _selectedDay = selectedDay;
-        _focusedDay = focusedDay;
-        _rangeStart = null; // Important to clean those
-        _rangeEnd = null;
-        _rangeSelectionMode = RangeSelectionMode.toggledOff;
-      });
-
-      _selectedEvents.value = _getEventsForDay(selectedDay);
-    }
-  }
-
-  void _onRangeSelected(DateTime? start, DateTime? end, DateTime focusedDay) {
     setState(() {
-      _selectedDay = null;
+      _selectedDay = selectedDay;
       _focusedDay = focusedDay;
-      _rangeStart = start;
-      _rangeEnd = end;
-      _rangeSelectionMode = RangeSelectionMode.toggledOn;
+
+      // Приводим выбранный день к UTC для поиска в _events
+      DateTime selectedDayUtc = DateTime.utc(
+        selectedDay.year,
+        selectedDay.month,
+        selectedDay.day,
+      );
+
+      _selectedEvents.value = _events[selectedDayUtc] ?? [];
     });
-
-    // `start` or `end` could be null
-    if (start != null && end != null) {
-      _selectedEvents.value = _getEventsForRange(start, end);
-    } else if (start != null) {
-      _selectedEvents.value = _getEventsForDay(start);
-    } else if (end != null) {
-      _selectedEvents.value = _getEventsForDay(end);
-    }
   }
-
 
   @override
   Widget build(BuildContext context) {
-    return TableCalendar<Event>(
-      locale: 'ru_RU',
-      firstDay: kFirstDay,
-      lastDay: kLastDay,
-      focusedDay: _focusedDay,
-      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-      rangeStartDay: _rangeStart,
-      rangeEndDay: _rangeEnd,
-      calendarFormat: _calendarFormat,
-      rangeSelectionMode: _rangeSelectionMode,
-      eventLoader: _getEventsForDay,
-      startingDayOfWeek: StartingDayOfWeek.monday,
-      calendarStyle: CalendarStyle(
-        // Use `CalendarStyle` to customize the UI
-        outsideDaysVisible: false,
-      ),
-      calendarBuilders: CalendarBuilders(
-        singleMarkerBuilder: (context, date, event) {
-          Color cor = event.color;
+    return Scaffold(
+      body: Column(
+        children: [
+          TableCalendar<OsmotrItem>(
+            locale: 'ru_RU',
+            firstDay: DateTime(2021, 12, 01),
+            lastDay: DateTime(DateTime.now().year, 12, 31),
+            focusedDay: _focusedDay,
 
-          return Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, color: cor),
-            width: 7.0,
-            height: 7.0,
-            margin: const EdgeInsets.symmetric(horizontal: 1.5),
-          );
-        },
+            // Убираем выделение сегодняшнего дня
+            selectedDayPredicate: (day) => false,
+
+            eventLoader: (day) {
+              DateTime dayUtc = DateTime.utc(day.year, day.month, day.day);
+              return _events[dayUtc] ?? [];
+            },
+
+            startingDayOfWeek: StartingDayOfWeek.monday,
+            calendarFormat: CalendarFormat.month,
+            availableCalendarFormats: {
+              CalendarFormat.month: "Month"
+            },
+            calendarStyle: const CalendarStyle(
+              outsideDaysVisible: false,
+            ),
+            onDaySelected: _onDaySelected,
+            onPageChanged: (focusedDay) {
+              _focusedDay = focusedDay;
+            },
+            calendarBuilders: CalendarBuilders(
+              singleMarkerBuilder: (context, date, event) {
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(int.parse('0xFF${event.jkColor.substring(1)}')),
+                  ),
+                  width: 7.0,
+                  height: 7.0,
+                );
+              },
+            ),
+          ),          const SizedBox(height: 8.0),
+          Expanded(
+            child: ValueListenableBuilder<List<OsmotrItem>>(
+              valueListenable: _selectedEvents,
+              builder: (context, events, _) {
+                return events.isEmpty
+                    ? const Center(child: Text('Нет событий'))
+                    : ListView.builder(
+                  itemCount: events.length,
+                  itemBuilder: (context, index) {
+                    final event = events[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 12.0, vertical: 4.0),
+                      child: ListTile(
+                        leading: Icon(Icons.home, color: Colors.brown[300]),
+                        title: Text('${event.jkName}'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Эксперт: ${event.ecspertNaOsmotre}'),
+                            Text('Время: ${event.osmotrField2}'),
+                            Text('Стоимость: ${event.stoimost} руб.'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
-      weekNumbersVisible: false,
-      onDaySelected: _onDaySelected,
-      onRangeSelected: _onRangeSelected,
-      onFormatChanged: (format) {
-        if (_calendarFormat != format) {
-          setState(() {
-            _calendarFormat = format;
-          });
-        }
-      },
-      onPageChanged: (focusedDay) {
-        _focusedDay = focusedDay;
-      },
     );
   }
 }

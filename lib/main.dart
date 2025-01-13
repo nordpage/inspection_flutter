@@ -9,6 +9,7 @@ import 'package:inspection/server/api_service.dart';
 import 'package:inspection/utils/theme.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:io';
 
 void main() async {
@@ -52,6 +53,15 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: customTheme,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en', ''), // Английский
+          Locale('ru', ''), // Русский
+        ],
         home: MainScreen(),
       ),
     );
