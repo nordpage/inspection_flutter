@@ -362,7 +362,7 @@ class _ContentSectionPageState extends State<ContentSectionPage> {
                   onPressed: currentIndex > 0 ? _goToPreviousSection : null,
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: Icon(Icons.arrow_back),
+                    child: Icon(Icons.arrow_back, size: 32),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFF0f7692),

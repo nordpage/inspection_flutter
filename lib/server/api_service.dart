@@ -1,13 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:inspection/models/login_response.dart';
-import 'package:inspection/models/map_anketa.dart';
-import 'package:inspection/provider/shared_preferences_provider.dart';
-
+import '../models/login_response.dart';
+import '../models/map_anketa.dart';
+import '../provider/shared_preferences_provider.dart';
 import '../models/osmotr_item.dart';
 import '../models/questionnaire_sections.dart';
 import '../models/map_result.dart';
@@ -15,18 +13,32 @@ import '../models/map_section.dart';
 import '../services/firebase_service.dart';
 
 class ApiService {
-  final String baseUrl = 'https://dev-my.centr-i.ru/';
-  final Dio dio = Dio();
+  final String devUrl = 'https://dev-my.centr-i.ru/';
+  final String prodUrl = 'https://my.centr-i.ru/';
+
+  late Dio _devDio;
+  late Dio _prodDio;
   final FirebaseService firebaseService = FirebaseService();
   final SharedPreferencesProvider sharedPreferencesProvider;
 
-
   ApiService(this.sharedPreferencesProvider) {
-    dio.options.baseUrl = baseUrl;
-    dio.options.connectTimeout = Duration(seconds: 20);
-    dio.options.receiveTimeout = Duration(seconds: 30);
+    _initializeDio();
+  }
 
-    // Добавляем интерцептор для логирования запросов и ответов
+  void _initializeDio() {
+    // Инициализация Dio для dev окружения
+    _devDio = _createDioInstance(devUrl);
+
+    // Инициализация Dio для prod окружения
+    _prodDio = _createDioInstance(prodUrl);
+  }
+
+  Dio _createDioInstance(String baseUrl) {
+    final dio = Dio()
+      ..options.baseUrl = baseUrl
+      ..options.connectTimeout = Duration(seconds: 20)
+      ..options.receiveTimeout = Duration(seconds: 30);
+
     dio.interceptors.add(LogInterceptor(
       request: true,
       requestHeader: true,
@@ -39,19 +51,82 @@ class ApiService {
       },
     ));
 
-    // Настройка адаптера для игнорирования некорректных сертификатов (для разработки)
     (dio.httpClientAdapter as DefaultHttpClientAdapter).onHttpClientCreate =
         (HttpClient client) {
       client.badCertificateCallback =
           (X509Certificate cert, String host, int port) => true;
       return client;
     };
+
+    return dio;
   }
 
+  // Метод для отправки фото с выбором окружения
+  Future<Response> sendFile(
+      String filePath,
+      String type,
+      String order, {
+        String? uid,
+        int? mapPhotoId,
+        String? b,
+        String? l,
+      }) async {
+    String token = _getBasic(
+      sharedPreferencesProvider.username!,
+      sharedPreferencesProvider.password!,
+    );
+
+    try {
+      // Собираем Map для FormData
+      final formDataMap = <String, dynamic>{
+        'uploadfile': await MultipartFile.fromFile(filePath), // Ключ важен
+        'type': type,
+        'order': order,
+      };
+
+      // Добавляем дополнительные поля только если они не null
+      if (uid != null) {
+        formDataMap['uid'] = uid;
+      }
+      if (mapPhotoId != null) {
+        formDataMap['map_photo_id'] = mapPhotoId.toString();
+      }
+      if (b != null) {
+        formDataMap['B'] = b;
+      }
+      if (l != null) {
+        formDataMap['L'] = l;
+      }
+
+      // Создаём FormData из Map
+      final formData = FormData.fromMap(formDataMap);
+
+      final dio = _devDio;
+
+      final response = await dio.post(
+        'api/departures/uploadPhoto',
+        options: Options(
+          headers: {'Authorization': token},
+        ),
+        data: formData,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return response;
+      } else {
+        throw Exception('Не удалось отправить файл');
+      }
+    } catch (e) {
+      throw Exception('Ошибка при отправке файла: $e');
+    }
+  }
+
+
+  // Остальные методы используют dev окружение по умолчанию
   Future<List<QuestionnaireSections>> getQuestionnaire() async {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
-      final response = await dio.get(
+      final response = await _devDio.get(
         'api/map_photo/anketa',
         options: Options(
           headers: {'Authorization': token},
@@ -73,7 +148,7 @@ class ApiService {
 
   Future<String> register(String body) async {
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'public/app_order_new',
         data: body,
         options: Options(
@@ -94,7 +169,7 @@ class ApiService {
   Future<MapResult> getMapWithBody(String body) async {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/map_photo/map',
         data: body,
         options: Options(
@@ -115,7 +190,7 @@ class ApiService {
   Future<MapAnketa> getMapAnketa() async {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/map_photo/map/anketa',
         options: Options(
           headers: {'Authorization': token},
@@ -136,7 +211,7 @@ class ApiService {
   Future<MapResult> getMap() async {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/map_photo/map',
         options: Options(
           headers: {'Authorization': token},
@@ -153,10 +228,9 @@ class ApiService {
     }
   }
 
-  /// Отправка URL видео
   Future<dynamic> sendVideoUrl(String url, String token) async {
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/map_photo/video_url',
         queryParameters: {
           'url': url,
@@ -179,7 +253,7 @@ class ApiService {
   /// Удаление контента
   Future<dynamic> removeContent(int id, String token) async {
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/removePhoto',
         queryParameters: {
           'id': id,
@@ -212,7 +286,7 @@ class ApiService {
         throw Exception("FCM Token недоступен");
       }
 
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/login',
         options: Options(
           headers: {
@@ -250,7 +324,7 @@ class ApiService {
   /// Получение списка времени
   Future<String> getTimeList(String token) async {
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/time_list',
         options: Options(
           headers: {'Authorization': token},
@@ -271,7 +345,7 @@ class ApiService {
   Future<List<OsmotrItem>> getOsmotrList(String d1, String d2) async {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/osmotr_list',
         options: Options(
           headers: {'Authorization': token},
@@ -298,7 +372,7 @@ class ApiService {
   /// Получение конкретного осмотра
   Future<MapSection> getOsmotr(String token, int id) async {
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/get_osmotr',
         options: Options(
           headers: {'Authorization': token},
@@ -321,7 +395,7 @@ class ApiService {
   /// Отмена заказа
   Future<String> cancelOrder(String token, int id) async {
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/osmotr_cancel',
         options: Options(
           headers: {'Authorization': token},
@@ -346,7 +420,7 @@ class ApiService {
     String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
 
     try {
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/referal_new',
         options: Options(
           headers: {
@@ -367,35 +441,6 @@ class ApiService {
     }
   }
 
-  Future<Response> sendPhoto(String filePath, String type, String order) async {
-    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
-
-    try {
-      FormData formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(filePath),
-        'type': type,
-        'order': order,
-      });
-
-      final response = await dio.post(
-        'api/departures/uploadPhoto',
-        options: Options(
-          headers: {'Authorization': token},
-        ),
-        data: formData,
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return response;
-      } else {
-        throw Exception('Не удалось отправить фотографию');
-      }
-    } catch (e) {
-      throw Exception('Ошибка при отправке фотографии: $e');
-    }
-  }
-
-  /// Вспомогательный метод для Basic Auth
   String _getBasic(String p1, String p2) {
     final basicAuth = 'Basic ' + base64Encode(utf8.encode('$p1:$p2'));
     print('Basic Auth: $basicAuth');

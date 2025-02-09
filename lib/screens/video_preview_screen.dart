@@ -14,11 +14,18 @@ class VideoPreviewScreen extends StatefulWidget {
   final Duration duration;
   final int sectionId;
 
+  final String? uid;
+  final String? b;
+  final String? l;
+
   const VideoPreviewScreen({
     super.key,
     required this.capturedVideo,
     required this.duration,
     required this.sectionId,
+    this.uid,
+    this.b,
+    this.l,
   });
 
   @override
@@ -31,14 +38,14 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
   late final DatabaseService _dbService;
   late final ApiService _apiService;
   MapContent? _videoContent;
+  late SharedPreferencesProvider prefsProvider;
 
   @override
   void initState() {
     super.initState();
     _dbService = DatabaseService();
-    final sharedPreferencesProvider =
-    Provider.of<SharedPreferencesProvider>(context, listen: false);
-    _apiService = ApiService(sharedPreferencesProvider);
+    prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
+    _apiService = ApiService(prefsProvider);
 
     _initializeVideoPlayer();
     _initializeVideoContent();
@@ -64,26 +71,45 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
     setState(() {
       _videoContent = content;
     });
+
+    _uploadVideo(content);
   }
 
-  Future<void> _uploadVideo() async {
-    if (_videoContent == null) return;
+
+  Future<void> _uploadVideo(MapContent photo) async {
+    if (photo.fileName == null || !File(photo.fileName!).existsSync()) {
+      print('Файл не существует: ${photo.fileName}');
+      await _updatePhotoStatus(photo, -1); // ERROR
+      return;
+    }
 
     try {
-      await _apiService.sendPhoto(
-        _videoContent!.fileName!,
+      final response = await _apiService.sendFile(
+        photo.fileName!,
         'video',
-        '${widget.sectionId}',
+        '${prefsProvider.username}',
+        uid: widget.uid,
+        mapPhotoId: widget.sectionId,
+        b: widget.b,
+        l: widget.l,
       );
 
-      // Update status in DB
-      await _dbService.updateContentStatus(_videoContent!.id!, 1); // SENT
-      setState(() {
-        _videoContent!.status = 1;
-      });
-      _showSnackbar('Видео успешно загружено');
+      await _updatePhotoStatus(photo, 1); // SENT
     } catch (e) {
-      _showSnackbar('Ошибка загрузки видео: $e');
+      print('Ошибка загрузки видео: $e');
+      await _updatePhotoStatus(photo, -1); // ERROR
+    }
+  }
+
+
+  Future<void> _updatePhotoStatus(MapContent photo, int status) async {
+    try {
+      await _dbService.updateContentStatus(photo.id!, status);
+      setState(() {
+        photo.status = status;
+      });
+    } catch (e) {
+      print('Ошибка обновления статуса: $e');
     }
   }
 
@@ -134,11 +160,6 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
       ),
       body: Column(
         children: [
-          ElevatedButton.icon(
-            onPressed: _uploadVideo,
-            icon: const Icon(Icons.upload),
-            label: const Text('Загрузить видео'),
-          ),
           Stack(
             alignment: Alignment.center,
             children: [

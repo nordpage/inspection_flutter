@@ -6,6 +6,8 @@ import 'package:inspection/screens/video_preview_screen.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/map_content.dart';
+import '../services/database_service.dart';
 import '../utils/utils.dart';
 
 class VideoCaptureScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen>
   bool _isRecording = false;
   Timer? _timer;
   Duration _recordingDuration = Duration.zero;
+  final DatabaseService _dbService = DatabaseService();
 
   @override
   void initState() {
@@ -85,12 +88,22 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen>
         final XFile videoFile = await _controller!.stopVideoRecording();
         _stopTimer();
 
-        // Сохранение видео в директорию
-        final savedFile = await _saveVideoToDocuments(videoFile);
-
         if (!mounted) return;
 
-        if (_recordingDuration.inMinutes > 7) {
+        if (_recordingDuration.inSeconds > 7) {
+          // Сохранение видео в директорию
+          final savedFile = await _saveVideoToDocuments(videoFile);
+
+          final content = MapContent(
+            id: DateTime.now().millisecondsSinceEpoch,
+            fileName: savedFile.path,
+            status: 0, // NOT_SENT
+            documentId: null,
+            textInspection: null,
+            statusInspection: null,
+          );
+          await _dbService.insertContentToSection(widget.sectionId, [content]);
+
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -152,7 +165,6 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen>
             '${documentsDir.path}/Priemka/$username/video';
         final Directory targetDir = Directory(priemkaPath);
 
-        // Создание папок, если их нет
         if (!await targetDir.exists()) {
           await targetDir.create(recursive: true);
         }
@@ -162,13 +174,11 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen>
         final String newFilePath =
             '$priemkaPath/video_$randomHash.mp4';
 
+
         // Копирование видео в директорию
         final File newFile = await File(videoFile.path).copy(newFilePath);
 
         print('Видео сохранено: ${newFile.path}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Видео сохранено в $newFilePath')),
-        );
 
         return newFile;
       } else {
@@ -176,9 +186,6 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen>
       }
     } catch (e) {
       print('Ошибка сохранения видео: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка сохранения видео: $e')),
-      );
       throw Exception('Ошибка сохранения видео');
     }
   }
