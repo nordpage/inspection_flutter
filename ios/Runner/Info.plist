@@ -54,5 +54,12 @@
     <false/>
     <key>NSCameraUsageDescription</key>
     <string>Использование камеры для захвата изображений.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>processing</string>
+        <string>remote-notification</string>
+        <string>background-fetch</string>
+    </array>
 </dict>
 </plist>

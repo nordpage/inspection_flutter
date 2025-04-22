@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:inspection/models/map_section.dart';
 import 'package:inspection/provider/client_provider.dart';
 import 'package:inspection/provider/shared_preferences_provider.dart';
 import 'package:inspection/screens/client_screen.dart';
-import 'package:inspection/screens/content_section_page.dart';
 import 'package:inspection/screens/referrer_screen.dart';
-import 'package:inspection/utils/status_content.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../provider/auth_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
     clientProvider = Provider.of<ClientProvider>(context, listen: false);
-    clientProvider.getMap();
     orderNumber = prefsProvider.username!;
     role = prefsProvider.role!;
     checkLocationPermission();
@@ -40,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void didPopNext() {
-    print("RETURN");
     orderNumber = prefsProvider.username!;
     role = prefsProvider.role!;
   }
@@ -67,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return ClientScreen(isPermissionChecked: isPermissionChecked, isLocationPermissionGranted: isLocationPermissionGranted, checkLocationPermission: checkLocationPermission);
     } else {
       return ReferrerScreen();
-    };
+    }
   }
 
 

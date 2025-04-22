@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../models/map_content.dart';
@@ -189,30 +189,31 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
   Future<void> _saveAndInsertPhotos() async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String username = prefs.getString('username') ?? 'default_user';
-      final Directory publicDir =
-      Directory('/storage/emulated/0/Priemka/$username/photo');
-
-      if (!await publicDir.exists()) {
-        await publicDir.create(recursive: true);
+      if (!await _checkStoragePermission()) {
+        throw Exception('Storage permission denied');
       }
 
-      for (var xfile in _savedPhotos.map((file) => File(file.path))) {
-        final String fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final String newFilePath = '${publicDir.path}/$fileName';
-        final File savedFile = await xfile.copy(newFilePath);
+      final username = (await SharedPreferences.getInstance())
+          .getString('username') ?? 'default_user';
+      final baseDir = await getExternalStorageDirectory();
+      final publicDir = Directory('${baseDir!.path}/Priemka/$username/photo');
+      await publicDir.create(recursive: true);
 
-        final content = MapContent(
-          id: DateTime.now().millisecondsSinceEpoch,
-          fileName: savedFile.path,
-          status: 0, // NOT_SENT
-          documentId: null,
-          textInspection: null,
-          statusInspection: null,
-        );
-        await _dbService.insertContentToSection(widget.sectionId, [content]);
-      }
+      final lastPhoto = _savedPhotos.last;
+      final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final newFilePath = '${publicDir.path}/$fileName';
+      final savedFile = await lastPhoto.copy(newFilePath);
+
+      final content = MapContent(
+        id: DateTime.now().millisecondsSinceEpoch,
+        fileName: savedFile.path,
+        status: 0,
+        hash: generateUniqueUid(savedFile.path),
+        documentId: null,
+        textInspection: null,
+        statusInspection: null,
+      );
+      await _dbService.insertContentToSection(widget.sectionId, [content]);
     } catch (e) {
       print('Error saving photos: $e');
       if (mounted) {
@@ -221,6 +222,17 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
         );
       }
     }
+  }
+
+  Future<bool> _checkStoragePermission() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        return await Permission.photos.request().isGranted;
+      }
+      return await Permission.storage.request().isGranted;
+    }
+    return true;
   }
 
   @override
@@ -289,7 +301,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                 _buildControlButton(
                   'ОК',
                       () async {
-                    if (_latestPhoto != null) {
+                    if (_latestPhoto != null && !_savedPhotos.any((photo) => photo.path == _latestPhoto!.path)) {
                       final file = File(_latestPhoto!.path);
                       _savedPhotos.add(file);
                       await _saveAndInsertPhotos();
@@ -301,7 +313,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                           capturedPhotos: _savedPhotos,
                           title: widget.title,
                           sectionId: widget.sectionId,
-                          uid: getRandomString(10),
                         ),
                       ),
                     );
@@ -312,8 +323,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                       () async {
                     if (_latestPhoto != null) {
                       final file = File(_latestPhoto!.path);
-                      _savedPhotos.add(file);
-                      await _saveAndInsertPhotos();
+                      if (!_savedPhotos.any((photo) => photo.path == file.path)) {
+                        _savedPhotos.add(file);
+                        await _saveAndInsertPhotos();
+                      }
                       setState(() {
                         _photoCaptured = false;
                         _latestPhoto = null;

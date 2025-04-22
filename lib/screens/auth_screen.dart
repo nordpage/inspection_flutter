@@ -18,11 +18,19 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  late ApiService apiService;
 
   TextEditingController loginController = TextEditingController();
   bool _loginValidate = false;
   TextEditingController passwordController = TextEditingController();
   bool _passwordValidate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
+    apiService = ApiService(prefsProvider);
+  }
 
   @override
   void dispose() {
@@ -33,9 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final prefsProvider = Provider.of<SharedPreferencesProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
-    final ApiService apiService = ApiService(prefsProvider);
 
     void _login(String username, String password) {
       apiService.login(username, password, (status, code, response) {

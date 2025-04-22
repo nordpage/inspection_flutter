@@ -34,12 +34,12 @@ class SharedPreferencesProvider with ChangeNotifier {
     _token = _preferences?.getString('token') ?? '';
 
     // Отладочный вывод
-    print('Loaded preferences:');
-    print('Username: $_username');
-    print('Password: $_password');
-    print('Role: $_role');
-    print('Hide Anketa: $_hideAnketa');
-    print('Token: $_token');
+    debugPrint('Loaded preferences:');
+    debugPrint('Username: $_username');
+    debugPrint('Password: $_password');
+    debugPrint('Role: $_role');
+    debugPrint('Hide Anketa: $_hideAnketa');
+    debugPrint('Token: $_token');
 
     notifyListeners();
   }

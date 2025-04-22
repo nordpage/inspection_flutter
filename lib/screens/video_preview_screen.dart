@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
 
 import '../models/map_content.dart';
+import '../provider/client_provider.dart';
 import '../server/api_service.dart';
 import '../services/database_service.dart';
 import '../provider/shared_preferences_provider.dart';
@@ -36,16 +37,17 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
   VideoPlayerController? _videoController;
   bool _isPlaying = false;
   late final DatabaseService _dbService;
-  late final ApiService _apiService;
   MapContent? _videoContent;
   late SharedPreferencesProvider prefsProvider;
+  late ClientProvider clientProvider;
+
 
   @override
   void initState() {
     super.initState();
     _dbService = DatabaseService();
     prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
-    _apiService = ApiService(prefsProvider);
+    clientProvider = Provider.of<ClientProvider>(context, listen: false);
 
     _initializeVideoPlayer();
     _initializeVideoContent();
@@ -58,66 +60,16 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
   }
 
   Future<void> _initializeVideoContent() async {
-    final content = MapContent(
-      id: DateTime.now().millisecondsSinceEpoch,
-      fileName: widget.capturedVideo.path,
-      status: 0, // NOT_SENT
-      documentId: null,
-      textInspection: null,
-      statusInspection: null,
-    );
-    await _dbService.insertContentToSection(widget.sectionId, [content]);
+    List<MapContent> content = await _dbService.getContentsForSection(widget.sectionId);
+
 
     setState(() {
-      _videoContent = content;
+      _videoContent = content.last;
     });
 
-    _uploadVideo(content);
   }
 
 
-  Future<void> _uploadVideo(MapContent photo) async {
-    if (photo.fileName == null || !File(photo.fileName!).existsSync()) {
-      print('Файл не существует: ${photo.fileName}');
-      await _updatePhotoStatus(photo, -1); // ERROR
-      return;
-    }
-
-    try {
-      final response = await _apiService.sendFile(
-        photo.fileName!,
-        'video',
-        '${prefsProvider.username}',
-        uid: widget.uid,
-        mapPhotoId: widget.sectionId,
-        b: widget.b,
-        l: widget.l,
-      );
-
-      await _updatePhotoStatus(photo, 1); // SENT
-    } catch (e) {
-      print('Ошибка загрузки видео: $e');
-      await _updatePhotoStatus(photo, -1); // ERROR
-    }
-  }
-
-
-  Future<void> _updatePhotoStatus(MapContent photo, int status) async {
-    try {
-      await _dbService.updateContentStatus(photo.id!, status);
-      setState(() {
-        photo.status = status;
-      });
-    } catch (e) {
-      print('Ошибка обновления статуса: $e');
-    }
-  }
-
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
 
   IconData _getStatusIcon(int? status) {
     switch (status) {
@@ -157,6 +109,14 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
       appBar: AppBar(
         title: const Text("Видео"),
         backgroundColor: const Color(0xFF0f7692),
+        leading: BackButton(
+          onPressed: () async {
+            await clientProvider.getMap();
+            Navigator.of(context).popUntil(
+                    (route) => route.isFirst
+            );
+          },
+        ),
       ),
       body: Column(
         children: [
@@ -176,14 +136,6 @@ class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
                     child: VideoPlayer(_videoController!),
                   )
                       : const Center(child: CircularProgressIndicator()),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                left: 24,
-                child: Text(
-                  _formatDuration(widget.duration),
-                  style: const TextStyle(color: Colors.grey, fontSize: 16),
                 ),
               ),
               Positioned(

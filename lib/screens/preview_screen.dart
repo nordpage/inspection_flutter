@@ -4,27 +4,21 @@ import 'package:provider/provider.dart';
 
 import '../models/map_content.dart';
 import '../provider/client_provider.dart';
-import '../server/api_service.dart';
 import '../services/database_service.dart';
 import '../provider/shared_preferences_provider.dart';
+import 'content_section_page.dart';
 
 class PreviewScreen extends StatefulWidget {
   final String title;
   final int sectionId;
   final List<File> capturedPhotos;
 
-  final String? uid;
-  final String? b;
-  final String? l;
 
   PreviewScreen({
     Key? key,
     required this.title,
     required this.sectionId,
     required this.capturedPhotos,
-    this.uid,
-    this.b,
-    this.l,
   }) : super(key: key);
 
   @override
@@ -33,7 +27,6 @@ class PreviewScreen extends StatefulWidget {
 
 class _PreviewScreenState extends State<PreviewScreen> {
   final DatabaseService _dbService = DatabaseService();
-  late ApiService _apiService;
   List<MapContent> _photoContents = [];
   bool _isLoading = true;
   bool _isUploading = false;
@@ -46,7 +39,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     super.initState();
     prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
     clientProvider = Provider.of<ClientProvider>(context, listen: false);
-    _apiService = ApiService(prefsProvider);
     _initializePhotos();
   }
 
@@ -54,15 +46,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     try {
       _photoContents = await _dbService.getContentsForSection(widget.sectionId);
 
-      if (widget.capturedPhotos.isNotEmpty) {
-        await _processNewPhotos();
-      }
-
       setState(() {
         _isLoading = false;
       });
 
-      _uploadAllPhotos();
     } catch (e) {
       print('Ошибка инициализации фото: $e');
       setState(() {
@@ -71,108 +58,58 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  Future<void> _processNewPhotos() async {
-    for (var photo in widget.capturedPhotos) {
-      if (!_photoContents.any((content) => content.fileName == photo.path)) {
-        final content = MapContent(
-          id: DateTime.now().millisecondsSinceEpoch,
-          fileName: photo.path,
-          status: 0, // NOT_SENT
-          documentId: null,
-          textInspection: null,
-          statusInspection: null,
-        );
-        await _dbService.insertContentToSection(widget.sectionId, [content]);
-        _photoContents.add(content);
-      }
-    }
-  }
-
-  Future<void> _uploadAllPhotos() async {
-    if (_isUploading) return;
-
-    setState(() {
-      _isUploading = true;
-    });
-
-    try {
-      for (var photo in _photoContents) {
-        if (photo.status != 1) { // 1 - SENT
-          await _uploadPhoto(photo);
-        }
-      }
-    } finally {
-      setState(() {
-        _isUploading = false;
-      });
-    }
-  }
-
-  Future<void> _uploadPhoto(MapContent photo) async {
-    if (photo.fileName == null || !File(photo.fileName!).existsSync()) {
-      print('Файл не существует: ${photo.fileName}');
-      await _updatePhotoStatus(photo, -1); // ERROR
-      return;
-    }
-
-    try {
-      final response = await _apiService.sendFile(
-        photo.fileName!,
-        'photo',
-        '${prefsProvider.username}',
-        uid: widget.uid,
-        mapPhotoId: widget.sectionId,
-        b: widget.b,
-        l: widget.l,
-      );
-
-      await _updatePhotoStatus(photo, 1); // SENT
-    } catch (e) {
-      print('Ошибка загрузки фото: $e');
-      await _updatePhotoStatus(photo, -1); // ERROR
-    }
-  }
-
-  Future<void> _updatePhotoStatus(MapContent photo, int status) async {
-    try {
-      await _dbService.updateContentStatus(photo.id!, status);
-      setState(() {
-        photo.status = status;
-      });
-    } catch (e) {
-      print('Ошибка обновления статуса: $e');
-    }
-  }
-
   Future<void> _deletePhoto(MapContent photo) async {
     try {
       await _dbService.deleteContent(photo.id!);
-
-      final file = File(photo.fileName!);
-      if (file.existsSync()) {
-        await file.delete();
-      }
+      final section = clientProvider.mapResult!.sections!
+          .firstWhere((s) => s.id == widget.sectionId);
+      section.contentList = await _dbService.getContentsForSection(widget.sectionId);
+      clientProvider.updateData();
+      await clientProvider.getMap();
 
       setState(() {
         _photoContents.remove(photo);
       });
+
+      if (_photoContents.isEmpty) {
+        int index = clientProvider.mapResult!.sections!
+            .indexWhere((element) => element.id == widget.sectionId);
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ContentSectionPage(
+              sections: clientProvider.mapResult!.sections!,
+              initialIndex: index,
+              documents: clientProvider.mapResult!.documents,
+              isVideo: false,
+            ),
+          ),
+        );
+      }
     } catch (e) {
-      print('Ошибка удаления фото: $e');
+      print('Error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ошибка при удалении фото')),
       );
     }
   }
 
-  Future<void> _retryUpload(MapContent photo) async {
-    await _uploadPhoto(photo);
-  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
+        leading: BackButton(
+          onPressed: () async {
+            await clientProvider.getMap();
+            Navigator.of(context).popUntil(
+                    (route) => route.isFirst
+            );
+          },
+        ),
         actions: [
           if (_isUploading)
             Center(
@@ -189,6 +126,27 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
         ],
+      ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ContentSectionPage(
+                  sections: clientProvider.mapResult!.sections!,
+                  initialIndex: clientProvider.mapResult!.sections!.indexWhere(
+                          (s) => s.id == widget.sectionId
+                  ),
+                  documents: clientProvider.mapResult!.documents,
+                  isVideo: false,
+                ),
+              ),
+            );
+          },
+          child: Text('К разделу'),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -262,13 +220,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
             Positioned(
               top: 8,
               left: 8,
-              child: GestureDetector(
-                onTap: content.status == -1 ? () => _retryUpload(content) : null,
-                child: Icon(
-                  _getStatusIcon(content.status),
-                  color: _getStatusColor(content.status),
-                  size: 24,
-                ),
+              child: Icon(
+                _getStatusIcon(content.status),
+                color: _getStatusColor(content.status),
+                size: 24,
               ),
             ),
             // Иконка удаления
@@ -300,11 +255,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
   IconData _getStatusIcon(int? status) {
     switch (status) {
       case 0:
-        return Icons.access_time; // не отправлено
+        return Icons.access_time;
       case 1:
-        return Icons.check_circle_outline; // отправлено
-      case -1:
-        return Icons.refresh; // ошибка, можно повторить
+        return Icons.check_circle_outline;
       default:
         return Icons.access_time;
     }
@@ -316,8 +269,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
         return Colors.grey;   // не отправлено
       case 1:
         return Colors.green;  // отправлено
-      case -1:
-        return Colors.red;    // ошибка
       default:
         return Colors.grey;
     }

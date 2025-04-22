@@ -24,16 +24,16 @@ class AuthProvider with ChangeNotifier {
     final username = sharedPreferencesProvider?.username;
     final password = sharedPreferencesProvider?.password;
 
-    print('Checking auth status...');
-    print('Username: $username');
-    print('Password: $password');
+    debugPrint('Checking auth status...');
+    debugPrint('Username: $username');
+    debugPrint('Password: $password');
 
     if (username != null && username.isNotEmpty && password != null && password.isNotEmpty) {
       _isAuth = true;
-      print('User is authenticated');
+      debugPrint('User is authenticated');
     } else {
       _isAuth = false;
-      print('User is not authenticated');
+      debugPrint('User is not authenticated');
     }
     notifyListeners();
   }
@@ -46,7 +46,7 @@ class AuthProvider with ChangeNotifier {
     await sharedPreferencesProvider!.saveRole(role);
     await sharedPreferencesProvider!.saveHideAnketa(hideAnketa);
 
-    print('User logged in: $username');
+    debugPrint('User logged in: $username');
     notifyListeners();
   }
 
@@ -58,7 +58,7 @@ class AuthProvider with ChangeNotifier {
     await sharedPreferencesProvider!.clearRole();
     await sharedPreferencesProvider!.clearHideAnketa();
 
-    print('User logged out');
+    debugPrint('User logged out');
     notifyListeners();
   }
 

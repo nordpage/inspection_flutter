@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:flutter/cupertino.dart';
+import '../models/Keys.dart';
 import '../models/login_response.dart';
 import '../models/map_anketa.dart';
 import '../provider/shared_preferences_provider.dart';
@@ -11,6 +11,9 @@ import '../models/questionnaire_sections.dart';
 import '../models/map_result.dart';
 import '../models/map_section.dart';
 import '../services/firebase_service.dart';
+import 'dart:typed_data' hide Uint8List;
+import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 
 class ApiService {
   final String devUrl = 'https://dev-my.centr-i.ru/';
@@ -61,54 +64,39 @@ class ApiService {
     return dio;
   }
 
-  // Метод для отправки фото с выбором окружения
   Future<Response> sendFile(
       String filePath,
       String type,
-      String order, {
+      String userName, {
         String? uid,
         int? mapPhotoId,
         String? b,
         String? l,
+        void Function(double sent, double total)? onProgress,
       }) async {
-    String token = _getBasic(
-      sharedPreferencesProvider.username!,
-      sharedPreferencesProvider.password!,
-    );
-
     try {
-      // Собираем Map для FormData
       final formDataMap = <String, dynamic>{
-        'uploadfile': await MultipartFile.fromFile(filePath), // Ключ важен
+        'uploadfile': await MultipartFile.fromFile(filePath),
         'type': type,
-        'order': order,
+        'order': userName,
       };
 
-      // Добавляем дополнительные поля только если они не null
-      if (uid != null) {
-        formDataMap['uid'] = uid;
-      }
-      if (mapPhotoId != null) {
-        formDataMap['map_photo_id'] = mapPhotoId.toString();
-      }
-      if (b != null) {
-        formDataMap['B'] = b;
-      }
-      if (l != null) {
-        formDataMap['L'] = l;
-      }
+      if (uid != null) formDataMap['uid'] = uid;
+      if (mapPhotoId != null) formDataMap['map_photo_id'] = mapPhotoId.toString();
+      if (b != null) formDataMap['B'] = b;
+      if (l != null) formDataMap['L'] = l;
 
-      // Создаём FormData из Map
       final formData = FormData.fromMap(formDataMap);
 
-      final dio = _devDio;
-
-      final response = await dio.post(
+      final response = await _devDio.post(
         'api/departures/uploadPhoto',
         options: Options(
-          headers: {'Authorization': token},
+          headers: {'Authorization': _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!)},
         ),
         data: formData,
+        onSendProgress: onProgress != null ? (sent, total) {
+          onProgress(sent.toDouble(), total.toDouble());
+        } : null,
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -228,7 +216,8 @@ class ApiService {
     }
   }
 
-  Future<dynamic> sendVideoUrl(String url, String token) async {
+  Future<dynamic> sendVideoUrl(String url) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
     try {
       final response = await _devDio.post(
         'api/map_photo/video_url',
@@ -369,6 +358,26 @@ class ApiService {
     }
   }
 
+  Future<Keys> getKeys() async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+    try {
+      final response = await _devDio.post(
+        '/api/map_photo/ya',
+        options: Options(
+          headers: {'Authorization': token},
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        return Keys.fromJson(response.data);
+      } else {
+        throw Exception('Не удалось получить ключи');
+      }
+    } catch (e) {
+      throw Exception('Ошибка при получении ключей: $e');
+    }
+  }
+
   /// Получение конкретного осмотра
   Future<MapSection> getOsmotr(String token, int id) async {
     try {
@@ -445,5 +454,159 @@ class ApiService {
     final basicAuth = 'Basic ' + base64Encode(utf8.encode('$p1:$p2'));
     print('Basic Auth: $basicAuth');
     return basicAuth;
+  }
+
+
+  Future<void> cancelReferOrder(int orderId) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+
+    try {
+      final response = await _devDio.post(
+        '/api/departures/osmotr_cancel',
+        options: Options(
+          headers: {
+            'Authorization': token,
+            'Content-Type': 'application/json',
+          },
+        ),
+        data: {
+          'id': orderId,
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Ошибка при отмене заказа: ${response.data}');
+      }
+    } catch (e) {
+      throw Exception('Ошибка при отмене заказа: $e');
+    }
+  }
+
+  /// Метод для обновления существующего заказа рефералом
+  Future<Map<String, dynamic>> updateReferOrder(Map<String, dynamic> orderData) async {
+    String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+
+    try {
+      final response = await _devDio.post(
+        'api/departures/referal_update',
+        options: Options(
+          headers: {
+            'Authorization': token,
+            'Content-Type': 'application/json',
+          },
+        ),
+        data: orderData,
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Ошибка при обновлении заказа: ${response.data}');
+      }
+
+      return response.data;
+    } catch (e) {
+      throw Exception('Ошибка при обновлении заказа: $e');
+    }
+  }
+
+  Future<Response> uploadOrderPhoto(
+      String orderId, File photo, int typeSector,
+      {String? uid}) async {
+    try {
+      // Устанавливаем заголовок авторизации
+      String token = _getBasic(sharedPreferencesProvider.username!, sharedPreferencesProvider.password!);
+
+      // Формируем базовый URL: например, departures/uploadPhoto?type=photos&order={orderId}
+      String url = 'departures/uploadPhoto?type=photos&order=$orderId';
+      if (uid != null && uid.isNotEmpty) {
+        url += "&uid=$uid";
+      }
+      url += "&sector=$typeSector";
+
+      // Определяем строку-сектор по типу
+      Map<int, String> sectorNames = {
+        1: "Дом снаружи ",
+        2: "Дом изнутри ",
+        3: "Квартира ",
+      };
+      String sectorName = sectorNames[typeSector] ?? "";
+
+      // Получаем базовое имя исходного файла (без расширения)
+      String originalBaseName = photo.path.split('/').last.split('.').first;
+      String newFileName = "$sectorName$originalBaseName";
+
+      // Обрабатываем изображение и сохраняем его как новый JPEG-файл
+      File processedFile = await _processAndSaveImage(
+        originalFile: photo,
+        newFileName: newFileName,
+        rotateAngle: 0, // Если требуется поворот, задайте, например, 90
+        targetWidth: 1080,
+        quality: 80,
+      );
+
+      // Формируем окончательное имя файла для отправки (например, последний сегмент пути)
+      String finalFileName = processedFile.path.split('/').last;
+
+      // Создаем FormData с файлом (имя поля – "uploadfile")
+      FormData formData = FormData.fromMap({
+        "uploadfile": await MultipartFile.fromFile(processedFile.path,
+            filename: finalFileName),
+      });
+
+      // Отправляем POST-запрос на сервер
+      Response response = await _devDio.post(url, options: Options(
+        headers: {
+          'Authorization': token,
+          'Content-Type': 'application/json',
+        },
+      ), data: formData);
+
+      // После успешной отправки удаляем временный обработанный файл
+      await processedFile.delete();
+
+      // Проверяем статус ответа
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Ошибка при загрузке фото: ${response.data}');
+      }
+      return response;
+    } catch (e) {
+      throw Exception("Ошибка при загрузке фото: $e");
+    }
+  }
+
+  Future<File> _processAndSaveImage({
+    required File originalFile,
+    required String newFileName,
+    int targetWidth = 1080,
+    int quality = 80,
+    int rotateAngle = 0,
+  }) async {
+    // Чтение байтов исходного файла как List<int>
+    List<int> imageBytes = await originalFile.readAsBytes();
+
+    // Декодирование изображения (функция decodeImage принимает List<int>)
+    img.Image? originalImage = img.decodeImage(imageBytes);
+    if (originalImage == null) {
+      throw Exception('Не удалось декодировать изображение');
+    }
+
+    // Если нужен поворот, выполняем его
+    img.Image processedImage = rotateAngle != 0
+        ? img.copyRotate(originalImage, rotateAngle)
+        : originalImage;
+
+    // Изменяем размер изображения до targetWidth с сохранением пропорций
+    processedImage = img.copyResize(processedImage, width: targetWidth);
+
+    // Кодирование в JPEG с заданным качеством
+    List<int> jpgBytes = img.encodeJpg(processedImage, quality: quality);
+
+    // Получаем директорию для сохранения (например, documents)
+    Directory directory = await getApplicationDocumentsDirectory();
+    String newPath = '${directory.path}/$newFileName.jpg';
+
+    // Создаем новый файл и записываем JPEG-данные
+    File newFile = File(newPath);
+    await newFile.writeAsBytes(jpgBytes);
+    return newFile;
   }
 }

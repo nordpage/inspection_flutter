@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../provider/shared_preferences_provider.dart';
 import '../server/api_service.dart';
-import '../models/osmotr_item.dart'; // Модель для событий
+import '../models/osmotr_item.dart';
+import 'new_order_screen.dart'; // Модель для событий
 
 class ReferrerScreen extends StatefulWidget {
   const ReferrerScreen({super.key});
@@ -76,6 +77,66 @@ class _ReferrerScreenState extends State<ReferrerScreen> {
     }
   }
 
+  // Метод для отмены заказа
+  Future<void> _cancelOrder(OsmotrItem order) async {
+    try {
+      final prefsProvider = Provider.of<SharedPreferencesProvider>(context, listen: false);
+      final ApiService apiService = ApiService(prefsProvider);
+
+      // Вызов API для отмены заказа
+      await apiService.cancelReferOrder(order.id);
+
+      // Перезагружаем данные после отмены
+      await loadOsmotrData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заказ успешно отменен')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при отмене заказа: $e')),
+      );
+    }
+  }
+
+  // Переход на экран редактирования
+  void _editOrder(OsmotrItem order) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => NewOrderScreen(orderToEdit: order),
+      ),
+    ).then((_) {
+      // После возврата из экрана редактирования обновляем данные
+      loadOsmotrData();
+    });
+  }
+
+  // Показать диалог подтверждения отмены
+  void _showCancelConfirmDialog(OsmotrItem order) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Подтверждение'),
+          content: const Text('Вы уверены, что хотите отменить этот заказ?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Нет'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _cancelOrder(order);
+              },
+              child: const Text('Да'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _selectedEvents.dispose();
@@ -109,7 +170,6 @@ class _ReferrerScreenState extends State<ReferrerScreen> {
             lastDay: DateTime(DateTime.now().year, 12, 31),
             focusedDay: _focusedDay,
 
-            // Убираем выделение сегодняшнего дня
             selectedDayPredicate: (day) => false,
 
             eventLoader: (day) {
@@ -142,7 +202,8 @@ class _ReferrerScreenState extends State<ReferrerScreen> {
                 );
               },
             ),
-          ),          const SizedBox(height: 8.0),
+          ),
+          const SizedBox(height: 8.0),
           Expanded(
             child: ValueListenableBuilder<List<OsmotrItem>>(
               valueListenable: _selectedEvents,
@@ -162,9 +223,41 @@ class _ReferrerScreenState extends State<ReferrerScreen> {
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Эксперт: ${event.ecspertNaOsmotre}'),
+                            Text('Эксперт: ${event.ecspertNaOsmotreTxt}'),
                             Text('Время: ${event.osmotrField2}'),
                             Text('Стоимость: ${event.stoimost} руб.'),
+                          ],
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert),
+                          onSelected: (String result) {
+                            if (result == 'edit') {
+                              _editOrder(event);
+                            } else if (result == 'cancel') {
+                              _showCancelConfirmDialog(event);
+                            }
+                          },
+                          itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                            const PopupMenuItem<String>(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit, color: Colors.blue),
+                                  SizedBox(width: 8),
+                                  Text('Редактировать'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'cancel',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.cancel, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Text('Отменить'),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),

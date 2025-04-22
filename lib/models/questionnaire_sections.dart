@@ -30,10 +30,10 @@ class QuestionnaireSections {
   Map<String, dynamic> toJson() => _$QuestionnaireSectionsToJson(this);
 
   void update(QuestionnaireSections section) {
-    this.n = section.n;
-    this.text = section.text;
-    this.minValue = section.minValue;
-    this.maxValue = section.maxValue;
-    this.defValue = section.defValue;
+    n = section.n;
+    text = section.text;
+    minValue = section.minValue;
+    maxValue = section.maxValue;
+    defValue = section.defValue;
   }
 }

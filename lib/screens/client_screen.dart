@@ -1,9 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:inspection/screens/preview_screen.dart';
+import 'package:inspection/screens/video_preview_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 import '../models/map_section.dart';
 import '../provider/auth_provider.dart';
 import '../provider/client_provider.dart';
 import '../provider/shared_preferences_provider.dart';
+import '../services/database_service.dart';
 import '../utils/status_content.dart';
 import 'content_section_page.dart';
 
@@ -23,9 +29,11 @@ class ClientScreen extends StatefulWidget {
   State<ClientScreen> createState() => _ClientScreenState();
 }
 
-class _ClientScreenState extends State<ClientScreen> {
+class _ClientScreenState extends State<ClientScreen> with RouteAware{
+  final RouteObserver<PageRoute> _routeObserver = RouteObserver<PageRoute>();
   late SharedPreferencesProvider prefsProvider;
   late ClientProvider clientProvider;
+  DatabaseService _dbService = DatabaseService();
 
   @override
   void initState() {
@@ -34,31 +42,50 @@ class _ClientScreenState extends State<ClientScreen> {
     clientProvider = Provider.of<ClientProvider>(context, listen: false);
   }
 
-  Icon getIcon(MapSection mapSection) {
-    IconData iconData = Icons.circle_outlined;
-    Color iconColor = Color(0xffaaaaaa);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
+  }
 
-    if ((mapSection.contentList == null || mapSection.contentList!.isEmpty) &&
-        (mapSection.minPhoto ?? 0) > 0) {
-      iconData = Icons.circle_outlined;
-    } else if (mapSection.contentList != null &&
-        mapSection.contentList!.isNotEmpty &&
-        mapSection.contentList!.length < (mapSection.minPhoto ?? 0)) {
-      iconData = Icons.circle_outlined;
-    } else if (mapSection.contentList != null &&
-        mapSection.contentList!.length >= (mapSection.minPhoto ?? 0)) {
-      bool hasPendingItems = mapSection.contentList!.any((item) =>
-      item.status == StatusContent.ADDED || item.status == StatusContent.DEFAULT);
+  @override
+  didPopNext() {
+    clientProvider.checkCanSend();
+    clientProvider.getMap();
+  }
 
-      if (hasPendingItems) {
-        iconData = Icons.watch_later;
-      } else {
-        iconData = Icons.check_circle_outline;
-        iconColor = Colors.green;
-      }
+  @override
+  dispose() {
+    _routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  Future<Duration?> _getVideoDuration(File videoFile) async {
+    try {
+      final video = await VideoPlayerController.file(videoFile);
+      await video.initialize();
+      final duration = video.value.duration;
+      await video.dispose();
+      return duration;
+    } catch (e) {
+      return null;
     }
+  }
 
-    return Icon(iconData, color: iconColor, size: 24);
+  Widget? _getSectionSubtitle(MapSection section, bool hasFilesToUpload, bool isVideo) {
+    bool hasUnsentPhotos = (section.contentList != null &&
+        section.contentList!.isNotEmpty &&
+        section.contentList!.any((item) =>
+            item.status == StatusContent.DEFAULT)) &&
+        hasFilesToUpload;
+
+    if (hasUnsentPhotos) {
+      return Text(
+        isVideo == true ? 'новые (не отправленные) видео' : 'новые (не отправленные) фото',
+        style: TextStyle(color: Colors.red),
+      );
+    }
+    return null;
   }
 
   @override
@@ -147,15 +174,27 @@ class _ClientScreenState extends State<ClientScreen> {
             padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16),
             child: Column(
               children: [
-                LinearProgressIndicator(
-                  value: provider.progressPercentage,
+                Consumer<ClientProvider>(
+                  builder: (context, provider, child) {
+                    return Column(
+                      children: [
+                        SizedBox(
+                          height: 26,
+                            child: LinearProgressIndicator(
+                              value: provider.progressPercentage / 100,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF02BBA3)),
+                              backgroundColor: Colors.grey[200],
+                            )),
+                        const SizedBox(height: 8),
+                        Text('${(provider.progressPercentage).toInt()}%', style: const TextStyle(color: Color(0xFF02BBA3), fontWeight: FontWeight.bold, fontSize: 16),),
+                      ],
+                    );
+                  },
                 ),
-                SizedBox(height: 8),
-                Text('${(provider.progressPercentage * 100).toInt()}%'),
-                SizedBox(height: 16),
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    Text(
+                    const Text(
                       "Адрес: ",
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
@@ -167,7 +206,7 @@ class _ClientScreenState extends State<ClientScreen> {
                 SizedBox(height: 12),
                 Row(
                   children: [
-                    Text(
+                    const Text(
                       "Номер заказа: ",
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
@@ -188,46 +227,131 @@ class _ClientScreenState extends State<ClientScreen> {
                     ),
                   ],
                 ),
-                if (provider.canSend) ...[
-                  SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: provider.sendData,
-                    child: Text('Отправить'),
-                  ),
-                ] else
-                  SizedBox(height: 16),
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () async {
                       await provider.getMap();
                     },
-                    child: ListView.builder(
-                      itemCount: provider.mapResult!.sections!.length,
-                      itemBuilder: (context, index) {
-                        MapSection section = provider.mapResult!.sections![index];
-                        return Card(
-                          child: ListTile(
-                            title: Text(section.name ?? ''),
-                            trailing: getIcon(section),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ContentSectionPage(
-                                    sections: provider.mapResult!.sections!,
-                                    initialIndex: index,
-                                    documents: provider.mapResult!.documents,
-                                    isVideo: section.name == "Видео",
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
+                    child: Consumer<ClientProvider>(
+                      builder: (context, provider, child) => ListView.builder(
+                        itemCount: provider.mapResult!.sections!.length,
+                        itemBuilder: (context, index) {
+                          MapSection section = provider.mapResult!.sections![index];
+                           bool isUploading = provider.uploadProgress.containsKey(section.id.toString());
+                          bool hasFilesToUpload = provider.filesToUpload[section.id] ?? false;
+
+                          return Card(
+                            child: ListTile(
+                              title: Text(section.name ?? ''),
+                              subtitle: _getSectionSubtitle(section, hasFilesToUpload, section.name == "Видео"),
+                              trailing: isUploading
+                                  ? const CircularProgressIndicator()
+                                  : provider.getIcon(section),
+                              onTap: () async {
+                                if (provider.isUploading) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Дождитесь завершения загрузки'))
+                                  );
+                                  return;
+                                }
+                                final hasContent = section.contentList?.isNotEmpty ?? false;
+                                final isVideo = section.name == "Видео";
+
+                                if (hasContent) {
+                                  if (isVideo) {
+                                    final content = await _dbService.getContentsForSection(section.id!);
+                                    if (content.isEmpty) return;
+
+                                    final videoFile = File(content.first.fileName!);
+                                    if (!videoFile.existsSync()) return;
+
+                                    final duration = await _getVideoDuration(videoFile);
+                                    if (duration == null) return;
+
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => VideoPreviewScreen(
+                                          capturedVideo: videoFile,
+                                          sectionId: section.id!, duration: duration!,
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    final contents = await _dbService.getContentsForSection(section.id!);
+                                    final files = contents
+                                        .map((c) => File(c.fileName!))
+                                        .where((f) => f.existsSync())
+                                        .toList();
+
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => PreviewScreen(
+                                          capturedPhotos: files,
+                                          title: section.name ?? '',
+                                          sectionId: section.id!,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } else {
+                                  Navigator.push(context, MaterialPageRoute(
+                                    builder: (context) => ContentSectionPage(
+                                      sections: provider.mapResult!.sections!,
+                                      initialIndex: index,
+                                      documents: provider.mapResult!.documents,
+                                      isVideo: isVideo,
+                                    ),
+                                  ));
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
                     ),
+
                   ),
                 ),
+                const SizedBox(height: 16),
+                Consumer<ClientProvider>(
+                  builder: (context, provider, child) {
+                    return SizedBox(
+                      width: 320,
+                      height: 70,
+                      child: ElevatedButton(
+                        onPressed: provider.canSend ? provider.sendData : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: provider.canSend ? const Color(0xFF02BBA3) : Colors.grey[300],
+                          disabledBackgroundColor: Colors.grey[300],
+                          elevation: provider.canSend ? 2 : 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'НАПРАВИТЬ НА ПРОВЕРКУ',
+                              style: TextStyle(
+                                fontSize: 18.0,
+                                color: provider.canSend ? Colors.white : Colors.grey[600],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              "Когда сделаны все фотографии и видео",
+                              style: TextStyle(
+                                fontSize: 12.0,
+                                color: provider.canSend ? Colors.white70 : Colors.grey[500],
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
                 ExpansionTile(
                   title: Text("Обозначения"),
                   children: <Widget>[

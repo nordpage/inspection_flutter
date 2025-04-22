@@ -31,28 +31,38 @@ class _MainScreenState extends State<MainScreen> {
     "Разработчик",
   ];
 
-  _onSelectItem(int index, bool isAuth, String role) async {
-    Navigator.of(context).pop(); // Закрыть Drawer
+  void _onSelectItem(int index, bool isAuth, String role) async {
+    Navigator.of(context).pop(); // Close the Drawer
 
     setState(() {
       _selectedDrawerIndex = index;
     });
 
     if (!isAuth) {
+      // Guest mode
       if (index >= 2) {
         _handleExternalLink(index, isAuth);
       }
     } else {
-      if (role == "client" && index == 4) {
-        // Обработка выхода для клиента
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        _selectedDrawerIndex = 0;
-        await authProvider.logout();
-      } else if (role == "CARETAKER" && index == 3) {
-        // Обработка выхода для CARETAKER
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        _selectedDrawerIndex = 0;
-        await authProvider.logout();
+      // Authenticated mode
+      if (role == "client") {
+        if (index == 4) {
+          // Handle logout for client
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          _selectedDrawerIndex = 0;
+          await authProvider.logout();
+        } else if (index >= 1) {
+          _handleExternalLink(index, isAuth);
+        }
+      } else if (role == "CARETAKER") {
+        if (index == 3) {
+          // Handle logout for caretaker
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          _selectedDrawerIndex = 0;
+          await authProvider.logout();
+        } else if (index >= 2) {
+          _handleExternalLink(index, isAuth);
+        }
       }
     }
   }

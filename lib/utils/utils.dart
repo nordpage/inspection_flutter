@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:collection';
+import 'dart:io';
 import 'dart:math';
+
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -61,3 +63,8 @@ Random _rnd = Random();
 
 String getRandomString(int length) => String.fromCharCodes(Iterable.generate(
     length, (_) => _chars.codeUnitAt(_rnd.nextInt(_chars.length))));
+
+String generateUniqueUid(String? filePath) {
+  return filePath != null ? "${DateTime.now().millisecondsSinceEpoch}_${getRandomString(6)}" : getRandomString(15);
+}
+

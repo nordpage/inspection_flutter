@@ -97,7 +97,8 @@ class _VideoCaptureScreenState extends State<VideoCaptureScreen>
           final content = MapContent(
             id: DateTime.now().millisecondsSinceEpoch,
             fileName: savedFile.path,
-            status: 0, // NOT_SENT
+            status: 0,
+            hash: generateUniqueUid(savedFile.path),
             documentId: null,
             textInspection: null,
             statusInspection: null,
