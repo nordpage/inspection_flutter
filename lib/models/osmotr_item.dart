@@ -7,6 +7,8 @@ class OsmotrItem {
   final String clientFio;    // ФИО клиента
   final String clientPhone;  // Телефон клиента
   final int komnat;          // Количество комнат
+  final String address;    // Адрес осмотра
+  final String section;    // Подъезд/секция
   final int stoimost;        // Стоимость оценки
   final String primechaniya; // Примечание к приемке
   final int referPriemka;    // Флаг: приемка квартиры (0 или 1)
@@ -26,6 +28,8 @@ class OsmotrItem {
     required this.clientFio,
     required this.clientPhone,
     required this.komnat,
+    required this.address,
+    required this.section,
     required this.stoimost,
     required this.primechaniya,
     required this.referPriemka,
@@ -49,6 +53,8 @@ class OsmotrItem {
       komnat: json['komnat'] is int
           ? json['komnat']
           : int.tryParse(json['komnat']?.toString() ?? '0') ?? 0,
+      address: json['address'] as String? ?? '',
+      section: json['section'] as String? ?? '',
       stoimost: json['stoimost'] is int
           ? json['stoimost']
           : int.tryParse(json['stoimost']?.toString() ?? '0') ?? 0,
@@ -83,6 +89,8 @@ class OsmotrItem {
       "client_fio": clientFio,
       "client_phone": clientPhone,
       "komnat": komnat,
+      "address": address,
+      "section": section,
       "stoimost": stoimost,
       "primechaniya": primechaniya,
       "refer_priemka": referPriemka,

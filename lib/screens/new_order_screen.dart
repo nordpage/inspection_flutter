@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:inspection/screens/referrer_screen.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 import '../provider/shared_preferences_provider.dart';
 import '../server/api_service.dart';
@@ -47,6 +48,9 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   List<String>? _bankList;
   List<String>? _timeList;
 
+  // Cached dropdown entries for ЖК items
+  List<DropdownMenuEntry<JkItem>> _jkEntries = [];
+
   JkItem? _selectedJkItem;
   String? _selectedBank;
   String? _selectedTime;
@@ -78,6 +82,12 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   final TextEditingController _sectionController = TextEditingController();  // Подъезд/секция
   final TextEditingController _addressController = TextEditingController();  // Адрес осмотра
   late SharedPreferencesProvider prefsProvider;
+
+  // Форматтер для маски телефона +7(###) ###-##-##
+  final MaskTextInputFormatter _phoneMaskFormatter = MaskTextInputFormatter(
+    mask: '+7(###) ###-##-##',
+    filter: { '#': RegExp(r'\d') },
+  );
 
   // Режим редактирования
   bool _isEditMode = false;
@@ -117,6 +127,10 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     _getMoney = order.moneyExpert == 1;
     _selectedRooms = order.komnat.toString();
 
+    // Prefill address and section fields
+    _addressController.text = order.address ?? '';
+    _sectionController.text = order.section ?? '';
+
     if (_referPriemka) {
       _priceController.text = order.stoimostPriemki.toString();
       _noteController.text = order.primechaniya;
@@ -149,6 +163,10 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     List<dynamic> jsonData = jsonDecode(data);
     setState(() {
       _jkItems = jsonData.map((item) => JkItem.fromJson(item)).toList();
+      // Populate cached dropdown entries for ЖК items
+      _jkEntries = _jkItems!.map<DropdownMenuEntry<JkItem>>((item) {
+        return DropdownMenuEntry<JkItem>(value: item, label: item.name);
+      }).toList();
       if (widget.orderToEdit != null) {
         try {
           _selectedJkItem = _jkItems!.firstWhere(
@@ -190,7 +208,9 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     );
     if (picked != null) {
       setState(() {
-        _dateController.text = "${picked.day}.${picked.month}.${picked.year}";
+        final day = picked.day.toString().padLeft(2, '0');
+        final month = picked.month.toString().padLeft(2, '0');
+        _dateController.text = "$day.$month.${picked.year}";
       });
     }
   }
@@ -412,6 +432,13 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
 
   // Формирование и отправка данных заказа
   Future<void> _submitOrder(ApiService apiService) async {
+    // Валидация: хотя бы один чекбокс должен быть выбран
+    if (!(_referOcenka || _lidOcenka || _referPriemka || _getMoney)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Пожалуйста, выберите хотя бы одну опцию')),
+      );
+      return;
+    }
     final Map<String, dynamic> data = {
       if (_isEditMode) "id": _orderId,
       "client_phone": _phoneController.text,
@@ -437,7 +464,8 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     try {
       dynamic result;
       if (_isEditMode) {
-        result = await apiService.updateReferOrder(data);
+        // Use referNew endpoint for update as well
+        result = await apiService.referNew(data);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Заказ успешно обновлен!')),
         );
@@ -482,7 +510,12 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
         }
       }
 
-      Navigator.pop(context);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReferrerScreen(), // Переход на экран с заказами
+        ),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
@@ -496,9 +529,6 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     final ApiService apiService = ApiService(prefsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditMode ? 'Редактирование заказа' : 'Новый заказ'),
-      ),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -521,6 +551,8 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
                   Expanded(
                     child: TextField(
                       controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [_phoneMaskFormatter],
                       decoration: const InputDecoration(
                         hintText: "+7(123)456-78-90",
                         border: OutlineInputBorder(),
@@ -617,11 +649,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
                       _selectedJkItem = value;
                     });
                   },
-                  dropdownMenuEntries: _jkItems!
-                      .map<DropdownMenuEntry<JkItem>>((JkItem item) {
-                    return DropdownMenuEntry<JkItem>(
-                        value: item, label: item.name);
-                  }).toList(),
+                  dropdownMenuEntries: _jkEntries,
                 ),
               ),
               const SizedBox(height: 12),

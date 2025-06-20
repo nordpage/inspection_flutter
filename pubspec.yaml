@@ -37,31 +37,25 @@ dependencies:
   cupertino_icons: ^1.0.6
   provider: ^6.1.2
   dio: ^5.6.0
-  firebase_messaging: ^14.0.0
-  firebase_core: ^2.24.2
+  firebase_messaging: ^15.2.5
+  firebase_core: ^3.13.0
   url_launcher: ^6.3.0
   mask_text_input_formatter: ^2.9.0
   build_runner: ^2.1.0
   json_serializable: ^6.0.1
   shared_preferences: ^2.0.13
-  flutter_svg: ^2.0.10+1
   sqflite: ^2.3.3+1
-  flutter_uploader: ^3.0.0-beta.4
   permission_handler: ^11.3.1
   camera: ^0.10.0+4
   table_calendar: ^3.1.2
   intl: ^0.19.0
-  connectivity_plus: ^6.1.0
   video_player: ^2.9.2
-  ffmpeg_kit_flutter: ^6.0.3
   path_provider: ^2.1.5
   flutter_localization: ^0.2.3
   device_info_plus: ^11.2.1
   image_picker: ^1.1.2
   geolocator: ^13.0.2
-  crypto: ^3.0.6
   flutter_local_notifications: ^18.0.1
-  workmanager: ^0.5.2
   aws_client: ^0.6.1
   encrypt: ^5.0.1
   pointycastle: ^3.7.3
@@ -77,6 +71,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^3.0.0
+  dependency_validator: ^3.2.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
