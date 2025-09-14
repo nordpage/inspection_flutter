@@ -111,7 +111,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
           },
         ),
         actions: [
-          if (_isUploading)
+          _isUploading ?
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(right: 16.0),
@@ -124,7 +124,11 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   ),
                 ),
               ),
-            ),
+            ) :
+              IconButton(onPressed: () {
+
+              }, icon: const Icon(Icons.home))
+
         ],
       ),
       bottomNavigationBar: Padding(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -108,7 +109,6 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     }
   }
 
-  // Заполнение данных заказа при редактировании
   void _loadOrderData(OsmotrItem order) {
     _phoneController.text = order.clientPhone;
     _fioController.text = order.clientFio;
@@ -141,6 +141,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       _noteOcenkaController.text = order.ecspertNaOsmotreTxt;
       _selectedBank = order.otchetDlya;
     }
+    _loadExistingPhotos(order.id);
   }
 
   @override
@@ -154,6 +155,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     _noteOcenkaController.dispose();
     _sectionController.dispose();
     _addressController.dispose();
+    _uploadProgressController.close();
     super.dispose();
   }
 
@@ -430,7 +432,8 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     );
   }
 
-  // Формирование и отправка данных заказа
+  // Обновленный метод _submitOrder для new_order_screen.dart
+
   Future<void> _submitOrder(ApiService apiService) async {
     // Валидация: хотя бы один чекбокс должен быть выбран
     if (!(_referOcenka || _lidOcenka || _referPriemka || _getMoney)) {
@@ -439,6 +442,28 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       );
       return;
     }
+
+    // Показываем индикатор загрузки
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text(_isEditMode ? 'Обновление заказа...' : 'Создание заказа...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     final Map<String, dynamic> data = {
       if (_isEditMode) "id": _orderId,
       "client_phone": _phoneController.text,
@@ -463,63 +488,153 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
 
     try {
       dynamic result;
+      String orderId;
+
+      // Создаем или обновляем заказ
       if (_isEditMode) {
-        // Use referNew endpoint for update as well
-        result = await apiService.referNew(data);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказ успешно обновлен!')),
-        );
+        result = await apiService.referNew(data); // API использует тот же endpoint для обновления
+        orderId = _orderId.toString();
       } else {
         result = await apiService.referNew(data);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказ успешно создан!')),
-        );
+        orderId = result['id'].toString();
       }
 
-      String orderId = _isEditMode ? _orderId.toString() : result['id'].toString();
+      // Закрываем диалог создания заказа
+      Navigator.pop(context);
 
-      final Map<String, int> categoryMapping = {
-        'Дом снаружи': 1,
-        'Дом изнутри': 2,
-        'Квартира': 3,
-      };
+      // Загружаем фотографии, если есть
+      bool hasPhotos = _photosByCategory.values.any((list) => list.isNotEmpty);
 
-      for (String category in _photosByCategory.keys) {
-        int typeSector = categoryMapping[category] ?? 0;
-        if (_photosByCategory[category]!.isNotEmpty) {
-          for (File photo in _photosByCategory[category]!) {
-            final uid = generateUniqueUid(photo.path);
-            Response response = await apiService.sendFile(
-              photo.path,
-              'photos',
-              prefsProvider.username ?? '',
-              uid: uid,
-              mapPhotoId: typeSector
-            );
-            if (response.statusCode == 200) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ReferrerScreen(), // Переход на экран с заказами
+      if (hasPhotos) {
+        // Показываем диалог загрузки фото
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Загрузка фотографий...'),
+                    SizedBox(height: 8),
+                    StreamBuilder<String>(
+                      stream: _uploadProgressStream,
+                      builder: (context, snapshot) {
+                        return Text(
+                          snapshot.data ?? '0 из 0',
+                          style: TextStyle(color: Colors.grey),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              );
-            } else {
+              ),
+            ),
+          ),
+        );
 
-            }
-          }
-        }
+        await _uploadPhotos(orderId, apiService);
+
+        // Закрываем диалог загрузки фото
+        Navigator.pop(context);
       }
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ReferrerScreen(), // Переход на экран с заказами
+      // Показываем сообщение об успехе
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isEditMode
+              ? 'Заказ успешно обновлен!'
+              : 'Заказ успешно создан!'),
+          backgroundColor: Colors.green,
         ),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+
+      // Переходим на экран с заказами
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => ReferrerScreen()),
+            (route) => route.isFirst,
       );
+
+    } catch (e) {
+      // Закрываем все диалоги
+      Navigator.of(context).popUntil((route) => route.isFirst);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+// Новый метод для загрузки фотографий с прогрессом
+  final _uploadProgressController = StreamController<String>.broadcast();
+  Stream<String> get _uploadProgressStream => _uploadProgressController.stream;
+
+  Future<void> _uploadPhotos(String orderId, ApiService apiService) async {
+    final Map<String, int> categoryMapping = {
+      'Дом снаружи': 1,
+      'Дом изнутри': 2,
+      'Квартира': 3,
+    };
+
+    int totalPhotos = 0;
+    int uploadedPhotos = 0;
+
+    // Считаем общее количество фото
+    for (var photos in _photosByCategory.values) {
+      totalPhotos += photos.length;
+    }
+
+    // Загружаем фото по категориям
+    for (String category in _photosByCategory.keys) {
+      int typeSector = categoryMapping[category] ?? 0;
+      List<File> photos = _photosByCategory[category] ?? [];
+
+      for (File photo in photos) {
+        try {
+          final uid = generateUniqueUid(photo.path);
+
+          // Используем правильный метод API
+          Response response = await apiService.sendFile(
+            photo.path,
+            'photos',
+            orderId, // Используем orderId вместо username
+            uid: uid,
+            mapPhotoId: typeSector,
+            onProgress: (sent, total) {
+              // Можно добавить более детальный прогресс для каждого файла
+            },
+          );
+
+          uploadedPhotos++;
+          _uploadProgressController.add('$uploadedPhotos из $totalPhotos');
+
+          if (response.statusCode != 200 && response.statusCode != 201) {
+            throw Exception('Ошибка загрузки фото: ${response.statusMessage}');
+          }
+
+        } catch (e) {
+          print('Ошибка загрузки фото $category: $e');
+          // Продолжаем загрузку остальных фото
+        }
+      }
+    }
+  }
+
+  Future<void> _loadExistingPhotos(int orderId) async {
+    try {
+      // TODO: Реализовать загрузку существующих фото через API
+      // final photos = await apiService.getOrderPhotos(orderId);
+      // Распределить фото по категориям в _photosByCategory
+    } catch (e) {
+      print('Ошибка загрузки существующих фото: $e');
     }
   }
 
